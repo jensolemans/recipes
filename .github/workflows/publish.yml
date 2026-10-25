@@ -1,0 +1,81 @@
+name: Publish recipes
+
+# Pulls the Cooklang recipes from Google Drive, builds a static site with
+# `cook build web` and publishes it to GitHub Pages.
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # every night around 04:17 Belgian time
+  workflow_dispatch: # "Run workflow" button for an instant update
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write # lets the keepalive step stop GitHub pausing the nightly run
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install rclone
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rclone
+
+      - name: Download recipes from Google Drive
+        env:
+          RCLONE_CONFIG_GDRIVE_TYPE: drive
+          RCLONE_CONFIG_GDRIVE_SCOPE: drive.readonly
+          RCLONE_CONFIG_GDRIVE_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
+          RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
+        run: |
+          rclone copy gdrive: recipes \
+            --include "*.cook" --include "*.menu" \
+            --include "*.jpg" --include "*.jpeg" --include "*.png" --include "*.webp" \
+            --include "config/**" \
+            --transfers 16
+          echo "Downloaded $(find recipes -name '*.cook' | wc -l) recipes"
+          test "$(find recipes -name '*.cook' | wc -l)" -gt 0
+
+      - name: Install CookCLI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo cooklang/cookcli \
+            --pattern 'cook-*-linux-x86_64-musl.tar.gz' --output cook.tar.gz
+          tar xzf cook.tar.gz
+          ./cook --version
+
+      - name: Build site
+        run: ./cook build web site --base-path recipes --lang en-US
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  keepalive:
+    # GitHub pauses scheduled workflows in repos with no commits for 60 days.
+    # This re-enables the schedule via the API, without making commits.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
