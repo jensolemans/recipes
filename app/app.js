@@ -986,6 +986,7 @@ async function showEditor(rawPath) {
   ta.value = st.src;
 
   const updatePreview = () => {
+    if (!ta.isConnected) return; // left the editor before the debounce fired
     const p = parseRecipe(ta.value, 1);
     const fm = readFrontmatter(ta.value);
     const fake = makeEntry({ path: `${st.folder}/${st.file || 'new'}`, src: ta.value });

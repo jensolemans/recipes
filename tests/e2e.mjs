@@ -5,7 +5,12 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-const { chromium } = createRequire(import.meta.url)('playwright');
+import { execSync } from 'child_process';
+// Use a local install if there is one, else the global one from `npm i -g playwright`.
+const load = (from) => createRequire(from)('playwright');
+let pw;
+try { pw = load(import.meta.url); } catch { pw = load(path.join(execSync('npm root -g', { shell: true }).toString().trim(), 'noop.js')); }
+const { chromium } = pw;
 
 const [, , BASE, RECIPES] = process.argv;
 const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
@@ -47,6 +52,15 @@ const fakeGis = (route) => route.fulfill({ contentType: 'text/javascript', body:
     } }),
     revoke: () => {},
   } } };` });
+
+// Points the site at the fake Drive's root folder, whatever local.json says,
+// so the editor tests never see the real folder ID.
+async function fakeConfig(route) {
+  const res = await route.fetch();
+  const data = await res.json();
+  data.config = { ...data.config, folderId: 'ROOT', clientId: data.config?.clientId || 'test-client' };
+  return route.fulfill({ response: res, json: data });
+}
 
 async function driveRoute(route) {
   const req = route.request();
@@ -190,6 +204,7 @@ const newPage = async (opts = {}) => {
   });
   await ctx.route('https://www.googleapis.com/**', driveRoute);
   await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', fakeConfig);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${BASE}/#/`);
@@ -280,6 +295,7 @@ const newPage = async (opts = {}) => {
   });
   await ctx.route('https://www.googleapis.com/**', driveRoute);
   await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', fakeConfig);
   const first = await ctx.newPage();
   await first.goto(`${BASE}/#/`);
   await first.waitForSelector('a[href="#/new"]', { timeout: 15000 });
