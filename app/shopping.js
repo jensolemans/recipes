@@ -37,8 +37,9 @@ function cleanList(raw) {
 /** Parses aisle.conf: sections in store order, each line one item with its other spellings after "|". */
 export function parseAisle(text) {
   const sections = [];
-  const names = new Map(); // any spelling -> { name, sec }
+  const names = new Map(); // any spelling -> { name, sec, pos }
   let sec = -1;
+  let pos = 0;
   for (const raw of String(text || '').split(/\r?\n/)) {
     const line = raw.replace(/\/\/.*$/, '').trim();
     if (!line) continue;
@@ -47,7 +48,8 @@ export function parseAisle(text) {
     if (sec < 0) continue;
     const spellings = line.split('|').map((s) => s.trim()).filter(Boolean);
     if (!spellings.length) continue;
-    for (const s of spellings) if (!names.has(lower(s))) names.set(lower(s), { name: spellings[0], sec });
+    pos++;
+    for (const s of spellings) if (!names.has(lower(s))) names.set(lower(s), { name: spellings[0], sec, pos });
   }
   return { sections, names, madeAtHome: sections.findIndex((s) => lower(s) === MADE_AT_HOME) };
 }
@@ -111,9 +113,9 @@ export function lookup(aisle, name) {
   const tries = [n, n.replace(/es$/, ''), n.replace(/s$/, ''), `${n}s`, `${n}es`];
   for (const t of tries) {
     const hit = aisle.names.get(t);
-    if (hit) return { key: lower(hit.name), name: hit.name, sec: hit.sec };
+    if (hit) return { key: lower(hit.name), name: hit.name, sec: hit.sec, pos: hit.pos };
   }
-  return { key: n, name: String(name).trim(), sec: -1 };
+  return { key: n, name: String(name).trim(), sec: -1, pos: Infinity };
 }
 
 // Metric amounts add up across units; anything else only with the same unit.
@@ -160,7 +162,7 @@ export function buildList(list, ctx) {
     let g = groups.get(found.key);
     if (!g) {
       const pantry = ctx.pantry.has(found.key) || ctx.pantry.has(lower(found.name));
-      g = { key: found.key, name: found.name, sec: found.sec, total: newTotal(), sources: [], items: [], checked: checked.has(found.key), pantry, home: false };
+      g = { key: found.key, name: found.name, sec: found.sec, pos: found.pos ?? Infinity, total: newTotal(), sources: [], items: [], checked: checked.has(found.key), pantry, home: false };
       groups.set(found.key, g);
     }
     Object.assign(g, extra);

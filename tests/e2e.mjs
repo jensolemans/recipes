@@ -33,6 +33,8 @@ function add(name, parent, content = null) {
     else add(d.name, parent, fs.readFileSync(p));
   }
 })(RECIPES, add('__root', null));
+// Start the shopping list tests from nothing, whatever the real folder holds.
+for (const f of files.values()) if (['shopping_list.json', 'pantry.conf'].includes(f.name)) files.delete(f.id);
 const pub = (f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, modifiedTime: f.modifiedTime, ...(f.content ? { md5Checksum: md5(f.content) } : {}) });
 const byName = (parent, name) => [...files.values()].find((f) => f.parents.includes(parent) && f.name === name && !f.trashed);
 
@@ -197,7 +199,7 @@ const newPage = async (opts = {}) => {
 
 // 5. editor against fake Drive
 {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
   await ctx.addInitScript(() => {
     localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
     localStorage.setItem('recipes.email', 'jens@example.com');
@@ -286,7 +288,7 @@ const newPage = async (opts = {}) => {
 
 // 6. sign-in survives closing the tab, and renews in place when the hour ends
 {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   await ctx.addInitScript(() => {
     if (localStorage.getItem('test.seeded')) return;
     localStorage.setItem('test.seeded', '1');
@@ -334,7 +336,7 @@ const newPage = async (opts = {}) => {
 
 // 7. shopping list, saved in the fake Drive
 {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   await ctx.addInitScript(() => {
     if (localStorage.getItem('test.seeded')) return;
     localStorage.setItem('test.seeded', '1');
@@ -375,6 +377,23 @@ const newPage = async (opts = {}) => {
   const secs = await page.$$eval('.shop-sec h2', (hs) => hs.map((h) => h.textContent.trim()));
   ok(secs[0] === 'Produce' && secs.indexOf('Dairy & eggs') < secs.indexOf('Baking') && secs.indexOf('Baking') < secs.indexOf('Wine, beer & spirits'), `sections follow aisle.conf (${secs.join(' | ')})`);
   ok(await page.isVisible('.shop-have summary'), 'made-at-home things go under Probably have');
+  const produce = await page.locator('.shop-sec', { hasText: 'Produce' }).locator('.shop-name').allTextContents();
+  const at = (n) => produce.findIndex((t) => t.startsWith(n));
+  ok(at('onion') < at('garlic') && at('garlic') < at('celery'), `items follow the aisle.conf order within an aisle (${produce.map((t) => t.split(/[A-Z]/)[0]).join(', ')})`);
+  ok(await page.$eval('.brand', (b) => b.getBoundingClientRect().height < 30), 'site title stays on one line on a phone');
+  ok(await page.isVisible('.btn-new svg') && !(await page.isVisible('.btn-new span')), 'New recipe is a + button on a phone');
+
+  // offers to renew the sign-in before the hour runs out
+  await page.evaluate(async () => {
+    const d = await import(new URL('drive.js', location.href).href);
+    d.user().expires = Date.now() + 5 * 60e3;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.waitForSelector('#shop-renew');
+  ok((await page.textContent('#shop-status')).includes('ends in 5 min'), 'says the sign-in ends soon');
+  await page.click('#shop-renew');
+  ok(await until(() => page.textContent('#shop-status').then((t) => t.includes('Saved in Google Drive')), 'renewed'), 'Renew now renews it in place');
+  ok(await page.evaluate(() => window.__gis.calls) === 1, 'with one Google window');
   ok(await page.textContent('.shop-have').then((t) => t.includes('batter') && t.includes('water')), 'batter and water are under Probably have');
 
   // add items by hand
@@ -461,6 +480,34 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/list`);
   ok(await page.isVisible('text=Sign in to use the shopping list'), 'list page asks to sign in');
   await page.close();
+}
+
+// 9. installable, and opens without a connection
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('.card');
+  const man = await page.evaluate(async () => {
+    const m = await fetch(document.querySelector('link[rel=manifest]').href).then((r) => r.json());
+    const icons = await Promise.all(m.icons.map((i) => fetch(i.src).then((r) => r.ok && r.headers.get('content-type').includes('png'))));
+    const title = await fetch('data/recipes.json').then((r) => r.json()).then((d) => d.config.title);
+    return { name: m.name, display: m.display, icons, title, maskable: m.icons.some((i) => i.purpose === 'maskable') };
+  });
+  ok(man.name === man.title && man.display === 'standalone', `manifest names the app after the site (${man.name})`);
+  ok(man.icons.every(Boolean) && man.maskable, 'app icons load, with a maskable one for Android');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await page.waitForSelector('.card');
+  ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)), 'offline helper is running');
+  await ctx.setOffline(true);
+  await page.reload();
+  await page.waitForSelector('.card', { timeout: 8000 });
+  ok((await page.$$('.card')).length === 155, 'home opens without a connection');
+  await page.evaluate(() => { location.hash = '#/r/3%20Mains/Pasta/lasagna?s=4'; });
+  ok(await page.waitForSelector('.recipe .step', { timeout: 8000 }).then(() => true, () => false), 'a recipe opens and scales without a connection');
+  await ctx.close();
 }
 
 ok(errors.length === 0, `no page errors ${errors.length ? JSON.stringify(errors.slice(0, 5)) : ''}`);

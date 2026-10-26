@@ -75,7 +75,7 @@ def rebuild_if_needed() -> None:
 class Handler(SimpleHTTPRequestHandler):
     def translate_path(self, path):
         clean = path.split("?", 1)[0].split("#", 1)[0]
-        if clean.startswith(("/data/", "/img/", "/thumb/")):
+        if clean.startswith(("/data/", "/img/", "/thumb/")) or clean == "/manifest.webmanifest":
             if clean.startswith("/data/"):
                 rebuild_if_needed()
             return super().translate_path(path).replace(str(APP), str(OUT), 1)
@@ -91,6 +91,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 Handler.extensions_map[".wasm"] = "application/wasm"
 Handler.extensions_map[".js"] = "text/javascript"
+Handler.extensions_map[".webmanifest"] = "application/manifest+json"
 
 if __name__ == "__main__":
     print(f"Reading recipes from {recipes_dir}")

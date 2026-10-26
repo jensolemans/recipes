@@ -103,6 +103,7 @@ function makeEntry(r) {
 
 async function boot() {
   initTheme();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   let data;
   try {
     const res = await fetch('data/recipes.json', { cache: 'no-cache' });
@@ -237,7 +238,7 @@ function renderAccount() {
   if (S.live === 'on' && drive.signedIn()) {
     const u = drive.user() || {};
     el.innerHTML = `${list}
-      <a class="btn btn-primary btn-sm" href="#/new">New recipe</a>
+      <a class="btn btn-primary btn-sm btn-new" href="#/new" aria-label="New recipe" title="New recipe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New recipe</span></a>
       <details class="menu">
         <summary class="avatar" aria-label="Account menu">${esc((u.name || u.email || '?').charAt(0).toUpperCase())}</summary>
         <div class="menu-pop">
@@ -1014,9 +1015,18 @@ async function showList() {
   if (S.live !== 'loading') S.shop.sync();
 }
 
+const RENEW_SOON = 10 * 60_000;
+
 function shopStatus() {
   const s = S.shop;
   const waiting = s.pendingCount ? ` ${s.pendingCount === 1 ? 'One change waits' : `${s.pendingCount} changes wait`} on this device.` : '';
+  // Offer the renewal before the hour runs out, so it does not end halfway
+  // through the shop. The list checks again every 15 seconds.
+  const left = drive.expiresAt() - Date.now();
+  if (s.status !== 'offline' && left < RENEW_SOON) {
+    const when = left <= 0 ? 'Your Google sign-in has ended.' : `Your Google sign-in ends in ${Math.max(1, Math.round(left / 60_000))} min.`;
+    return `${when}${waiting} <button class="link-btn" id="shop-renew">Renew now</button>`;
+  }
   switch (s.status) {
     case 'signin': return `Not synced.${waiting} <button class="link-btn" id="shop-renew">Renew sign-in</button>`;
     case 'offline': return `Offline.${waiting || ' '} Changes sync when you are back online.`;
@@ -1069,8 +1079,10 @@ function aisleView(b) {
   const secs = ctx.aisle.sections.map((name) => ({ name, items: [] }));
   const other = { name: 'Other', items: [] };
   for (const g of groups) if (toBuy(g) && !g.checked) (secs[g.sec] || other).items.push(g);
-  const block = (title, items, cls = '') => `<section class="shop-sec ${cls}"><h2>${title}</h2><ul class="shop-list">${items.sort(byName).map((g) => shopRow(g, { note: from(g) })).join('')}</ul></section>`;
-  const out = [...secs, other].filter((s) => s.items.length).map((s) => block(esc(cap(s.name)), s.items));
+  // Within an aisle, items follow the order they have in aisle.conf.
+  const byAisle = (x, y) => (x.pos === y.pos ? 0 : x.pos < y.pos ? -1 : 1) || byName(x, y);
+  const block = (title, items, cls = '', sort = byName) => `<section class="shop-sec ${cls}"><h2>${title}</h2><ul class="shop-list">${items.sort(sort).map((g) => shopRow(g, { note: from(g) })).join('')}</ul></section>`;
+  const out = [...secs, other].filter((s) => s.items.length).map((s) => block(esc(cap(s.name)), s.items, '', byAisle));
   const have = groups.filter((g) => !toBuy(g) && !g.checked);
   if (have.length) out.push(`<details class="shop-sec shop-have"><summary>Probably have <span>${have.length}</span></summary><ul class="shop-list">${have.sort(byName).map((g) => shopRow(g, { note: from(g) })).join('')}</ul></details>`);
   const done = groups.filter((g) => g.checked);

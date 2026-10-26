@@ -3,7 +3,8 @@
 
 Usage: build.py RECIPES_DIR APP_DIR OUT_DIR
 
-Copies the web app from APP_DIR to OUT_DIR and writes:
+Copies the web app from APP_DIR to OUT_DIR (naming the home-screen app in
+manifest.webmanifest after the site title) and writes:
   data/recipes.json  every .cook file: path, source text, md5, modified time, image
   img/<id>.jpg       full-size photo (max 1600 px)
   thumb/<id>.jpg     card thumbnail (max 640 px)
@@ -102,6 +103,11 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
         "publishUrl": f"https://github.com/{repo}/actions/workflows/publish.yml" if repo else "",
     }
     payload = {"built": int(time.time()), "config": config, "folders": folders, "recipes": recipes}
+    manifest_path = out_dir / "manifest.webmanifest"
+    if manifest_path.exists():  # the home-screen app is named after the site
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["name"] = manifest["short_name"] = config["title"]
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     (data_dir / "recipes.json").write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )

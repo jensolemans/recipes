@@ -28,6 +28,11 @@ folders use the same files.
     ("Probably have"). Changes queue in localStorage and replay on top of the
     newest Drive version, so offline ticks and two devices both work. The list
     page checks Drive every 15 s and when the tab comes back.
+  - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
+    that opens without a connection. The service worker serves the site from
+    its cache and refreshes it in the background (network first on
+    localhost). Bump `CACHE` in `sw.js` when adding or removing site files.
+    build.py names the app after the site title.
   - `fonts/`: self-hosted Bricolage Grotesque (UI, headings) and Newsreader
     (method text, descriptions).
 - `scripts/build.py RECIPES APP OUT`: copies `app/` to OUT and writes

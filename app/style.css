@@ -97,7 +97,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   max-width: 1180px; width: 100%; margin: 0 auto; padding: 14px 16px; min-height: 64px;
 }
-.brand { font-weight: 700; font-size: 17px; text-decoration: none; letter-spacing: -.01em; }
+.brand {
+  font-weight: 700; font-size: 17px; text-decoration: none; letter-spacing: -.01em;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btn-new svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; margin-left: -4px; }
 body[data-view="home"] .brand { visibility: hidden; }
 .top-right { display: flex; align-items: center; gap: 6px; }
 .account { display: flex; align-items: center; gap: 10px; }
@@ -498,6 +502,10 @@ body[data-view="list"] .icon-link { background: var(--soft); }
   .card-facts { font-size: 13px; gap: 8px; }
   .card-where { display: none; }
   .ing-row { grid-template-columns: auto 78px minmax(0, 1fr); }
+  .btn-new { width: 36px; padding: 0; }
+  .btn-new svg { margin: 0; width: 18px; height: 18px; }
+  .btn-new span { display: none; }
+  .top-right { flex: none; }
   .shop-main { grid-template-columns: auto 72px minmax(0, 1fr); gap: 10px; }
   .shop-count { margin-left: 0; }
   .shop-bar .link-btn { margin-left: auto; }
