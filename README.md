@@ -1,19 +1,33 @@
-# Recipes site
+# Jens's Recipes
 
-A recipe website built on the Cooklang files in the Google Drive folder **Cooklang Recipes**.
+**[jensolemans.github.io/recipes](https://jensolemans.github.io/recipes/)**
 
-- **Friends** browse, search, filter and scale every recipe. No account needed, read only.
-- **You** sign in with Google to add, edit, move, rename and delete recipes and photos. Changes are written straight to the Drive folder, so the Cooklang app and your desktop folders stay in sync.
-- **Free**: GitHub Pages hosting, GitHub Actions for the hourly rebuild, and Google's free APIs.
+This is my own recipe web app. It is where I keep every recipe I cook, how I plan the week's shopping, and what sits on my phone next to the stove. It is a website anyone can open, and an app I can install on my phone and use without a connection.
 
-## How it works
+The whole thing was vibe coded with [Claude Code](https://claude.com/claude-code): I described what I wanted, Claude wrote the code, and I used it in my kitchen and asked for changes until it felt right.
+
+## What it does
+
+- **Keep** all my recipes in one place, as plain [Cooklang](https://cooklang.org) files in a Google Drive folder. That folder is the only database: the Cooklang phone app, my laptop and this site all read and write the same files.
+- **Share** them. Friends can browse, search and filter by category, course, cuisine, diet and time, without an account.
+- **Cook** from them. Scale any recipe to the number of servings you need, see each step with its ingredients highlighted, and start timers straight from the method.
+- **Edit** them. Signed in with Google, I add, edit, move, rename and delete recipes and photos right on the site, from any device. Changes land in Drive straight away.
+- **Shop** for them. Add recipes (scaled, or just some parts of them) to a shopping list. It merges the ingredients, sorts them in the order of my store's aisles, sets aside what I probably have in the pantry, and syncs between my phone and laptop, also when I tick things off offline.
+- **Import** them. With the `/import-recipe` command in Claude Code, I give Claude a link, some pasted text or a photo of a cookbook page, and it becomes a clean Cooklang recipe with a photo in the right folder. Or I paste Claude's reply into the site's editor.
+
+## How it is built
+
+- **No framework, no npm packages, no server.** Plain HTML, CSS and JavaScript, with the official Cooklang parser running in the browser.
+- **Free to run.** GitHub Pages hosts it, a GitHub Action rebuilds it every hour from Drive, and editing uses Google's free APIs with my own sign-in in the browser.
+
+## Who sees what
 
 | Who | Sees | Updated |
 |---|---|---|
 | Friends | A snapshot of the Drive folder | Every hour, or right away with **Actions → Publish recipes → Run workflow** |
-| You, signed in | The live Drive folder | Instantly |
+| Me, signed in | The live Drive folder | Instantly |
 
-There is no server. Editing happens in your browser with your own Google sign-in, so only Google accounts that can edit the Drive folder can change anything. Anyone else who signs in stays read only.
+There is no server. Editing happens in the browser with my own Google sign-in, so only Google accounts that can edit the Drive folder can change anything. Anyone else who signs in stays read only.
 
 Deleting moves the recipe and its photo to the Google Drive trash, so you can restore them for 30 days. If a recipe was changed elsewhere (in the Cooklang app, say) while you were editing it, the site warns you before overwriting.
 
@@ -21,12 +35,15 @@ Deleting moves the recipe and its photo to the Google Drive trash, so you can re
 
 ```
 app/                     the website (HTML, CSS, JavaScript)
+app/shopping.js          the shopping list
+app/sw.js                offline support and the installable app
 app/vendor/cooklang/     official Cooklang parser (@cooklang/cooklang 0.19.1, MIT)
 app/fonts/               Bricolage Grotesque and Newsreader (SIL Open Font License)
 scripts/build.py         turns the Drive download into the site's data and photos
 scripts/dev.py           local preview at http://localhost:8000 from your synced Drive folder
 tests/e2e.mjs            browser tests, run against a fake Google Drive
 CLAUDE.md                project notes for Claude Code
+.claude/skills/import-recipe/   the /import-recipe command
 .claude/launch.json      lets the Claude desktop app start the preview
 .github/workflows/publish.yml   hourly download, build and publish
 ```
@@ -76,4 +93,6 @@ Open the site and click **Sign in** (top right). Google shows "Google hasn't ver
 - **Light and dark**: the button next to **Sign in** switches between Auto (follows the device), Light and Dark, remembered per device.
 - **Scaling** uses the official Cooklang rules: amounts marked fixed, like `@salt{=1%tsp}`, never change. Units stay as you wrote them.
 - **Local preview**: `python scripts/dev.py`, then open http://localhost:8000. The first run creates `local.json`; check that `recipesDir` points to your synced recipe folder.
+- **Shopping list**: lives in Drive as `config/shopping_list.json`. Store order and spellings come from `config/aisle.conf`, the "Probably have" list from `config/pantry.conf`.
+- **On your phone**: open the site and choose **Add to Home screen**. It opens without a connection and updates itself when a new version is out.
 - **Tests**: see `tests/README.md`.
