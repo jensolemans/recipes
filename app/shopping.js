@@ -152,7 +152,7 @@ export function parseItem(text) {
 
 /**
  * Works out the list. `ctx`: { recipe(path) -> { title, src } | undefined,
- * ingredients(src, factor) -> [...], aisle, pantry: Set }.
+ * ingredients(src, factor, parts) -> [...], aisle, pantry: Set }.
  * Returns { groups: Map(key -> group), recipes: [...], manual: [...] }.
  */
 export function buildList(list, ctx) {
@@ -173,7 +173,7 @@ export function buildList(list, ctx) {
     const e = ctx.recipe(r.path);
     if (!e) return { ...r, missing: true, lines: [] };
     const lines = new Map();
-    for (const ing of ctx.ingredients(e.src, r.factor || 1)) {
+    for (const ing of ctx.ingredients(e.src, r.factor || 1, r.parts || null)) {
       let found;
       if (ing.ref) {
         const title = ctx.recipe(ing.ref)?.title || ing.name;
@@ -209,8 +209,8 @@ export function buildList(list, ctx) {
 }
 
 /** Ingredient keys a recipe would put on the list, for unchecking them when it is added. */
-export function recipeKeys(src, factor, ctx) {
-  return ctx.ingredients(src, factor).map((ing) => (ing.ref ? lower(ctx.recipe(ing.ref)?.title || ing.name) : lookup(ctx.aisle, ing.name).key));
+export function recipeKeys(src, factor, ctx, parts = null) {
+  return ctx.ingredients(src, factor, parts).map((ing) => (ing.ref ? lower(ctx.recipe(ing.ref)?.title || ing.name) : lookup(ctx.aisle, ing.name).key));
 }
 
 // ---------------------------------------------------------------- operations
@@ -222,7 +222,7 @@ export function apply(list, op) {
   switch (op.t) {
     case 'addRecipe': {
       l.recipes = l.recipes.filter((r) => r.path !== op.path);
-      l.recipes.push({ id: op.id, path: op.path, title: op.title, servings: op.servings ?? null, factor: op.factor, removed: [], added: op.at });
+      l.recipes.push({ id: op.id, path: op.path, title: op.title, servings: op.servings ?? null, factor: op.factor, parts: op.parts || null, removed: [], added: op.at });
       l.checked = l.checked.filter((k) => !(op.keys || []).includes(k));
       break;
     }

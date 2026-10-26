@@ -213,14 +213,62 @@ function amountOf(q) {
   return n == null ? null : { n, unit: q.unit || '' };
 }
 
+const refOf = (ing) => {
+  const r = ing.reference;
+  return r ? [...(r.components || []), r.name].filter((p) => p && p !== '.').join('/') : null;
+};
+
+// A section without a heading is the start of the recipe.
+const sectionName = (sec, i) => sec.name || (i === 0 ? 'Main recipe' : `Part ${i + 1}`);
+
+/** Ingredient numbers used in each section of a parsed recipe. */
+function sectionIngredients(recipe) {
+  return (recipe.sections || []).map((sec, i) => {
+    const used = new Set();
+    for (const c of sec.content || []) {
+      if (c.type === 'text') continue;
+      for (const it of c.value.items || []) {
+        if (it.type === 'ingredient' && recipe.ingredients[it.index] && shouldList(recipe.ingredients[it.index])) used.add(it.index);
+      }
+    }
+    return { name: sectionName(sec, i), used: [...used] };
+  });
+}
+
+/**
+ * The parts of a recipe that need shopping: one per section with ingredients,
+ * as [{ name, ingredients: [names] }]. Fewer than two means no choice.
+ */
+export function recipeParts(src) {
+  const { recipe } = parseRecipe(src, 1);
+  if (!recipe) return [];
+  return sectionIngredients(recipe).filter((s) => s.used.length).map((s) => ({
+    name: s.name,
+    ingredients: [...new Set(s.used.map((i) => recipe.ingredients[i].name))],
+  }));
+}
+
 /**
  * The ingredients to buy for a recipe at `factor`, one entry per ingredient:
  * [{ name, ref, optional, amounts: [{ n, unit } | { text }] }]. `ref` is the
- * path of a linked recipe, if the ingredient is one.
+ * path of a linked recipe, if the ingredient is one. `parts` limits it to
+ * those sections (names from recipeParts); if none of them exist any more,
+ * the whole recipe counts.
  */
-export function shoppingIngredients(src, factor = 1) {
+export function shoppingIngredients(src, factor = 1, parts = null) {
   const { recipe, grouped } = parseRecipe(src, factor);
   if (!recipe) return [];
+  if (parts) {
+    const chosen = sectionIngredients(recipe).filter((s) => parts.includes(s.name));
+    if (chosen.length) {
+      // One entry per mention; the shopping list adds up repeats.
+      const used = [...new Set(chosen.flatMap((s) => s.used))].sort((a, b) => a - b);
+      return used.map((i) => {
+        const ing = recipe.ingredients[i];
+        return { name: ing.name, ref: refOf(ing), optional: /OPT/.test(ing.modifiers || ''), amounts: [amountOf(ing.quantity)].filter(Boolean) };
+      });
+    }
+  }
   const list = grouped.length ? grouped : recipe.ingredients.map((ing, index) => ({ index, single: ing.quantity }));
   const out = [];
   for (const g of list) {
@@ -233,9 +281,7 @@ export function shoppingIngredients(src, factor = 1) {
       if (g.quantity.no_unit) qs.push(g.quantity.no_unit);
       for (const q of g.quantity.other || []) qs.push(q);
     } else if (g.single) qs.push(g.single);
-    const r = ing.reference;
-    const ref = r ? [...(r.components || []), r.name].filter((p) => p && p !== '.').join('/') : null;
-    out.push({ name: ing.name, ref, optional: /OPT/.test(ing.modifiers || ''), amounts: qs.map(amountOf).filter(Boolean) });
+    out.push({ name: ing.name, ref: refOf(ing), optional: /OPT/.test(ing.modifiers || ''), amounts: qs.map(amountOf).filter(Boolean) });
   }
   return out;
 }

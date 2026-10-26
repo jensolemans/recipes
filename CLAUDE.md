@@ -22,7 +22,8 @@ folders use the same files.
   - `drive.js`: Google sign-in (Google Identity Services token flow, scope
     `drive`) and Drive REST calls. Runs in the browser with the user's token.
   - `shopping.js`: the signed-in shopping list (`#/list`). Stored in Drive as
-    `config/shopping_list.json` (recipes with their scale, own items, checked
+    `config/shopping_list.json` (recipes with their scale and chosen parts, i.e.
+    `== Section ==` headings, own items, checked
     and removed lines); the list itself is worked out from that with
     `config/aisle.conf` (store order, spellings) and `config/pantry.conf`
     ("Probably have"). Changes queue in localStorage and replay on top of the

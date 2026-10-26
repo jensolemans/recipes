@@ -468,6 +468,39 @@ const newPage = async (opts = {}) => {
   await page.click('dialog button:has-text("Clear list")');
   ok(await until(() => !listJson().recipes.length && !listJson().items.length, 'clear all'), 'Clear shopping list empties it');
   await page.waitForSelector('.shop-empty');
+
+  // a recipe in parts asks which parts to shop for
+  await page.goto(`${BASE}/#/r/3%20Mains/Meat/swedish_meatballs`);
+  await page.waitForSelector('#add-list');
+  await page.click('#add-list');
+  await page.waitForSelector('dialog[open] .parts-list');
+  const parts = await page.$$eval('.parts-list b', (bs) => bs.map((b) => b.textContent));
+  ok(parts.join() === 'Meatballs,Browning,Gravy', `lists the parts of the recipe (${parts.join(', ')})`);
+  ok((await page.textContent('.parts-list li:has-text("Gravy") small')).includes('beef stock'), 'each part shows its ingredients');
+  await page.uncheck('.parts-list li:has-text("Gravy") input');
+  await page.click('dialog button:has-text("Add to list")');
+  ok(await until(() => page.textContent('#toast').then((t) => t.includes('only Meatballs and browning')), 'toast'), 'says which parts were added');
+  ok(await until(() => listJson().recipes[0]?.parts?.join() === 'Meatballs,Browning', 'parts'), 'the chosen parts are saved');
+  await page.goto(`${BASE}/#/list`);
+  await page.waitForSelector('.shop-row');
+  const names = await page.$$eval('.shop-name', (els) => els.map((e) => e.firstChild.textContent.trim()));
+  ok(names.includes('ground beef') && !names.includes('beef stock') && !names.some((n) => n.includes('cream')), `only the ticked parts are on the list (${names.length} items)`);
+  await page.click('.seg [data-view="recipe"]');
+  ok((await page.textContent('.shop-parts')) === 'Only Meatballs and browning', 'by recipe says which parts');
+  await page.goBack();
+  await page.goto(`${BASE}/#/r/3%20Mains/Meat/swedish_meatballs`);
+  await page.waitForSelector('#add-list');
+  await page.click('#add-list');
+  await page.waitForSelector('dialog[open] .parts-list');
+  ok(!(await page.isChecked('.parts-list li:has-text("Gravy") input')), 'adding again starts from the earlier choice');
+  await page.click('dialog button:has-text("Cancel")');
+  ok(listJson().recipes.length === 1, 'cancel adds nothing');
+  if (process.env.SHOT_DIR) {
+    await page.click('#add-list');
+    await page.waitForSelector('dialog[open] .parts-list');
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/parts-phone.png` });
+    await page.click('dialog button:has-text("Cancel")');
+  }
   await ctx.close();
 }
 

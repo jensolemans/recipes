@@ -1,6 +1,6 @@
 import {
   initParser, parseRecipe, shouldList, readFrontmatter, parseDuration, fmtDuration,
-  ingredientNames, fmtQuantity, fmtGrouped, fmtYield, fmtAmount, shoppingIngredients,
+  ingredientNames, fmtQuantity, fmtGrouped, fmtYield, fmtAmount, shoppingIngredients, recipeParts,
 } from './cooklang.js';
 import * as drive from './drive.js';
 import * as shop from './shopping.js';
@@ -850,15 +850,23 @@ async function showRecipe(rawPath, params) {
   if (wake) wake.onclick = () => toggleWakeLock(wake);
 
   const addList = $('#add-list');
-  if (addList) addList.onclick = () => {
+  if (addList) addList.onclick = async () => {
     const factor = base ? servings / base : mult;
-    const already = S.shop.list.recipes.some((r) => r.path === path);
+    const existing = S.shop.list.recipes.find((r) => r.path === path);
+    // A recipe in parts (meatballs, gravy) asks which parts to shop for.
+    let parts = null;
+    const all = recipeParts(e.src);
+    if (all.length > 1) {
+      parts = await chooseParts(e.title, all, existing?.parts);
+      if (parts === undefined) return;
+      if (parts.length === all.length) parts = null;
+    }
     S.shop.do({
-      t: 'addRecipe', id: shop.newId(), path, title: e.title, servings: base ? servings : null, factor,
-      keys: shop.recipeKeys(e.src, factor, shopCtx()),
+      t: 'addRecipe', id: shop.newId(), path, title: e.title, servings: base ? servings : null, factor, parts,
+      keys: shop.recipeKeys(e.src, factor, shopCtx(), parts),
     });
-    const size = base ? `${servings} ${servings === 1 ? 'serving' : 'servings'}` : `${mult}×`;
-    toast(already ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
+    const size = [base ? servingsText(servings) : `${mult}×`, parts ? partsText(parts) : ''].filter(Boolean).join(', ');
+    toast(existing ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
       { label: 'View list', run: () => go('#/list') });
   };
 
@@ -885,11 +893,11 @@ function shopCtx() {
     aisle: aisleCache.parsed,
     pantry: pantryCache.parsed,
     recipe: (path) => S.recipes.get(path),
-    ingredients: (src, factor) => {
-      const k = `${factor}|${src}`;
+    ingredients: (src, factor, parts = null) => {
+      const k = `${factor}|${parts ? JSON.stringify(parts) : ''}|${src}`;
       if (!ingMemo.has(k)) {
         if (ingMemo.size > 300) ingMemo.clear();
-        ingMemo.set(k, shoppingIngredients(src, factor));
+        ingMemo.set(k, shoppingIngredients(src, factor, parts));
       }
       return ingMemo.get(k);
     },
@@ -900,6 +908,7 @@ const built = () => shop.buildList(S.shop.list, shopCtx());
 const toBuy = (g) => !g.pantry && !g.home;
 const amount = (total) => shop.totalText(total, fmtAmount);
 const servingsText = (n) => `${n} ${n === 1 ? 'serving' : 'servings'}`;
+const partsText = (parts) => `only ${joinAnd(parts.map((p, i) => (i ? p.toLowerCase() : p)))}`;
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 function listLink() {
@@ -1094,6 +1103,7 @@ function recipeView(b) {
   const out = b.recipes.map((r) => {
     const q = r.servings ? `?s=${r.servings}` : r.factor && r.factor !== 1 ? `?x=${r.factor}` : '';
     const size = r.servings ? servingsText(r.servings) : r.factor && r.factor !== 1 ? `${r.factor}×` : '';
+    const only = r.parts && !r.missing ? `<p class="shop-parts">${esc(cap(partsText(r.parts)))}</p>` : '';
     const title = r.missing ? esc(r.title || prettifyFile(r.path.split('/').pop())) : `<a href="#/r/${encPath(r.path)}${q}">${esc(r.title)}</a>`;
     const rows = r.lines.map((l) => shopRow(l.group, {
       total: l.total, recipeId: r.id,
@@ -1101,7 +1111,7 @@ function recipeView(b) {
     }));
     return `<section class="shop-recipe">
       <div class="shop-recipe-head"><h2>${title}</h2><span>${esc(size)}</span><button class="link-btn" data-remove-recipe="${esc(r.id)}">Remove</button></div>
-      ${r.missing ? '<p class="muted">This recipe is no longer in your collection.</p>'
+      ${only}${r.missing ? '<p class="muted">This recipe is no longer in your collection.</p>'
         : rows.length ? `<ul class="shop-list">${rows.join('')}</ul>` : '<p class="muted">Nothing left to buy.</p>'}
     </section>`;
   });
@@ -1631,6 +1641,35 @@ function ask({ title, body, actions }) {
     dlg.onclose = () => {
       const i = Number(dlg.returnValue);
       resolve(Number.isInteger(i) && actions[i] ? actions[i].value : actions[0].value);
+      dlg.returnValue = '';
+    };
+    dlg.showModal();
+  });
+}
+
+/**
+ * Asks which parts of a recipe to shop for. Resolves with the chosen part
+ * names, or undefined when cancelled. `before` ticks an earlier choice.
+ */
+function chooseParts(title, parts, before) {
+  const dlg = $('#modal');
+  const on = (p) => !before || before.includes(p.name);
+  dlg.innerHTML = `<form method="dialog" class="parts">
+    <h2>Add ${esc(title)}</h2>
+    <p>This recipe has parts. Untick the ones you are not making.</p>
+    <ul class="parts-list">${parts.map((p, i) => `<li><label>
+      <input type="checkbox" class="tick" value="${i}" ${on(p) ? 'checked' : ''}>
+      <span><b>${esc(p.name)}</b><small>${esc(p.ingredients.join(', '))}</small></span>
+    </label></li>`).join('')}</ul>
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary" id="parts-ok">Add to list</button></div>
+  </form>`;
+  const boxes = $$('.parts-list input', dlg);
+  const update = () => { $('#parts-ok', dlg).disabled = !boxes.some((b) => b.checked); };
+  boxes.forEach((b) => { b.onchange = update; });
+  update();
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      resolve(dlg.returnValue === 'ok' ? boxes.filter((b) => b.checked).map((b) => parts[Number(b.value)].name) : undefined);
       dlg.returnValue = '';
     };
     dlg.showModal();
