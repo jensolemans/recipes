@@ -2,12 +2,15 @@
 // in a shop without signal. Google Drive and sign-in calls are not touched.
 //
 // The site itself (HTML, CSS, JS, fonts, parser) is served from the copy and
-// refreshed in the background: a new version shows on the next visit. The
+// refreshed in the background. The
 // recipe index tries the network first for 3 seconds. Photos are kept once
 // seen and refreshed like the site (a replaced photo keeps its file name).
 // On localhost everything tries the network first, so edits show at once.
-// Bump the cache name when files are added or removed below.
-const CACHE = 'recipes-v1';
+//
+// build.py replaces the version below with a fingerprint of the site files,
+// so every release is a new service worker that installs the whole new
+// version at once, and the page offers a reload.
+const CACHE = 'recipes-dev';
 const SITE = [
   './', 'index.html', 'style.css', 'app.js', 'cooklang.js', 'drive.js', 'shopping.js',
   'icon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
@@ -36,9 +39,12 @@ const keep = (req, res) => {
   return res;
 };
 const cached = (req) => caches.match(req, { ignoreSearch: true });
+// Always ask the server, not the browser's own 10 minute cache; an
+// unchanged file only costs a short "not modified" answer.
+const fresh = (req) => fetch(req, { cache: 'no-cache' }).then((res) => keep(req, res));
 
 async function networkFirst(req, timeout) {
-  const net = fetch(req).then((res) => keep(req, res));
+  const net = fresh(req);
   try {
     if (!timeout) return await net;
     return await Promise.race([net, new Promise((_, no) => setTimeout(no, timeout))]);
@@ -49,7 +55,7 @@ async function networkFirst(req, timeout) {
 
 async function staleWhileRevalidate(req, ev) {
   const hit = await cached(req);
-  const net = fetch(req).then((res) => keep(req, res));
+  const net = fresh(req);
   if (hit) { ev.waitUntil(net.catch(() => {})); return hit; }
   return net;
 }

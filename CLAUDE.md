@@ -37,8 +37,10 @@ folders use the same files.
   - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
     that opens without a connection. The service worker serves the site from
     its cache and refreshes it in the background (network first on
-    localhost). Bump `CACHE` in `sw.js` when adding or removing site files.
-    build.py names the app after the site title.
+    localhost). build.py stamps `CACHE` in `sw.js` with a fingerprint of the
+    site files, so each release installs as a whole and open pages offer a
+    reload; add new site files to `SITE` in `sw.js`. build.py also names the
+    app after the site title.
   - `fonts/`: self-hosted Bricolage Grotesque (UI, headings) and Newsreader
     (method text, descriptions).
 - `scripts/build.py RECIPES APP OUT`: copies `app/` to OUT and writes

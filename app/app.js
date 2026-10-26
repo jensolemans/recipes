@@ -103,7 +103,15 @@ function makeEntry(r) {
 
 async function boot() {
   initTheme();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // A new release takes over in the background; this page still runs the
+    // old code until it reloads. (The first install is not an update.)
+    const hadWorker = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadWorker && !S.dirty) toast('A new version of the site is ready.', { label: 'Reload', run: () => location.reload() });
+    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   let data;
   try {
     const res = await fetch('data/recipes.json', { cache: 'no-cache' });

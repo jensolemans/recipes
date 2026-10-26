@@ -51,6 +51,24 @@ def find_image(cook: Path) -> Path | None:
     return None
 
 
+def stamp_service_worker(app_dir: Path, out_dir: Path) -> None:
+    """Names the offline cache after a fingerprint of the site files.
+
+    A change to the site then changes sw.js, so phones install the whole new
+    version at once instead of picking it up file by file. Recipe changes do
+    not count: the recipe index refreshes on its own.
+    """
+    sw = out_dir / "sw.js"
+    if not sw.exists():
+        return
+    digest = hashlib.sha1()
+    for f in sorted(p for p in app_dir.rglob("*") if p.is_file()):
+        digest.update(f.relative_to(app_dir).as_posix().encode("utf-8"))
+        digest.update(f.read_bytes().replace(b"\r\n", b"\n"))
+    text = sw.read_text(encoding="utf-8")
+    sw.write_text(text.replace("const CACHE = 'recipes-dev';", f"const CACHE = 'recipes-{digest.hexdigest()[:10]}';"), encoding="utf-8")
+
+
 def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = False) -> int:
     if out_dir.exists():
         for child in out_dir.iterdir():
@@ -59,6 +77,7 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
             shutil.rmtree(child) if child.is_dir() else child.unlink()
     out_dir.mkdir(parents=True, exist_ok=True)
     shutil.copytree(app_dir, out_dir, dirs_exist_ok=True)
+    stamp_service_worker(app_dir, out_dir)
 
     recipes = []
     for cook in sorted(recipes_dir.rglob("*.cook")):
