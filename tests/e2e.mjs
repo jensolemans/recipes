@@ -515,6 +515,88 @@ const newPage = async (opts = {}) => {
   await page.close();
 }
 
+// 10. on a wide screen the list sits in a side panel
+{
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, serviceWorkers: 'block' });
+  await ctx.addInitScript(() => {
+    if (localStorage.getItem('test.seeded')) return;
+    localStorage.setItem('test.seeded', '1');
+    localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
+    localStorage.setItem('recipes.email', 'jens@example.com');
+  });
+  await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', fakeConfig);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  const shot = (name) => (process.env.SHOT_DIR ? page.screenshot({ path: `${process.env.SHOT_DIR}/${name}.png` }) : null);
+  const mainRight = () => page.$eval('#main', (m) => m.getBoundingClientRect().right);
+
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('a[href="#/new"]', { timeout: 15000 });
+  ok(await page.isVisible('#rail') && !(await page.isVisible('.account .icon-link')), 'closed list is a rail on the right, not a top bar icon');
+  await shot('panel-rail');
+
+  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.waitForSelector('#add-list');
+  await page.click('#add-list');
+  await page.waitForSelector('.side .shop-row');
+  ok(true, 'the first add opens the panel by itself');
+  ok(await page.locator('.side .shop-row.is-new').count() > 3, 'the new lines light up');
+  ok(!(await page.isVisible('.toast-btn')), 'no View list button while the panel is open');
+  ok(await mainRight() <= 1400 - 340, 'the recipe makes room for the panel');
+  await page.waitForTimeout(800);
+  await shot('panel-open-recipe');
+
+  await page.click('#side-close');
+  await page.waitForSelector('#rail');
+  await page.goto(`${BASE}/#/r/3%20Mains/Pasta/lasagna`);
+  await page.waitForSelector('#add-list');
+  await page.click('#add-list');
+  await page.waitForTimeout(400);
+  ok(await page.isVisible('#rail') && !(await page.isVisible('.side .shop-panel')), 'after closing it, adding keeps it closed');
+  ok(await page.isVisible('.toast-btn:has-text("View list")'), 'and offers View list instead');
+  ok(Number(await page.textContent('#rail .badge')) > 10, 'the rail counts what is left to buy');
+
+  await page.keyboard.press('l');
+  await page.waitForSelector('.side .shop-panel');
+  ok(true, 'L opens it');
+  await page.reload();
+  await page.waitForSelector('.side .shop-row', { timeout: 15000 });
+  ok(true, 'it stays open after a reload');
+  await page.fill('#shop-new', 'frozen fries');
+  await page.keyboard.press('l');
+  ok(await page.isVisible('.side .shop-panel'), 'typing an L in the add box does not close it');
+  await page.press('#shop-new', 'Enter');
+  await page.waitForSelector('.side .shop-name:has-text("frozen fries")');
+  ok(true, 'items can be added from the panel');
+  await page.click('.side .seg [data-view="recipe"]');
+  await page.waitForSelector('.side .shop-recipe-head');
+  await shot('panel-open-home');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('.side .shop-row');
+  await shot('panel-open-dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+
+  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.waitForSelector('#src');
+  ok(await page.isVisible('#rail') && !(await page.isVisible('.side .shop-panel')), 'the editor keeps it as a rail');
+  await page.click('a.link-btn:has-text("Cancel")');
+  await page.waitForSelector('.side .shop-panel');
+  ok(true, 'and it comes back after the editor');
+  await page.goto(`${BASE}/#/list`);
+  await page.waitForSelector('#main .shop-row');
+  ok(!(await page.isVisible('#side')) && (await page.$$('#shop-body')).length === 1, 'the list page shows the list once, without the panel');
+  await page.goto(`${BASE}/#/`);
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await page.waitForTimeout(300);
+  ok(!(await page.isVisible('#side')) && await page.isVisible('.account .icon-link'), 'narrower than 1100 px it goes back to the top bar button');
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  ok(over <= 0, `no sideways scroll at 1000 px (${over}px)`);
+  await ctx.close();
+}
+
 // 9. installable, and opens without a connection
 {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });

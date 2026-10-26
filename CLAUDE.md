@@ -28,7 +28,10 @@ folders use the same files.
     `config/aisle.conf` (store order, spellings) and `config/pantry.conf`
     ("Probably have"). Changes queue in localStorage and replay on top of the
     newest Drive version, so offline ticks and two devices both work. The list
-    page checks Drive every 15 s and when the tab comes back.
+    page checks Drive every 15 s and when the tab comes back. From 1100 px
+    wide the list also sits on the right as a side panel (`#side`): a rail
+    when closed, open or closed remembered per device, L toggles it, the
+    editor keeps it a rail and the list page hides it.
   - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
     that opens without a connection. The service worker serves the site from
     its cache and refreshes it in the background (network first on

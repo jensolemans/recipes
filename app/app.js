@@ -130,6 +130,7 @@ async function boot() {
   initParser().then(() => { S.parserReady = true; renderAccount(); }).catch(() => {});
   renderAccount();
   renderFoot();
+  initSide();
   window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', (ev) => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
   route();
@@ -138,7 +139,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     watchSession();
-    if (document.body.dataset.view === 'list') S.shop?.sync();
+    if ($('#shop-body')) S.shop?.sync();
   });
 }
 
@@ -176,6 +177,7 @@ function route() {
   renderAccount();
   stopWakeLock();
   stopListPolling();
+  renderSide();
   const { path, params } = parseHash();
   document.body.dataset.view = '';
   if (path === '/list') return showList();
@@ -861,13 +863,17 @@ async function showRecipe(rawPath, params) {
       if (parts === undefined) return;
       if (parts.length === all.length) parts = null;
     }
-    S.shop.do({
-      t: 'addRecipe', id: shop.newId(), path, title: e.title, servings: base ? servings : null, factor, parts,
-      keys: shop.recipeKeys(e.src, factor, shopCtx(), parts),
-    });
+    const id = shop.newId();
+    const keys = shop.recipeKeys(e.src, factor, shopCtx(), parts);
+    // The new lines light up for a moment in the side panel.
+    S.flash = { recipeId: id, keys: new Set(keys), until: Date.now() + 2500 };
+    S.shop.do({ t: 'addRecipe', id, path, title: e.title, servings: base ? servings : null, factor, parts, keys });
+    // The first time on a wide screen the panel opens by itself; after
+    // that it stays the way it was left.
+    if (sideMode() !== 'off' && saved.get('sidePanel', null) == null) setSide('open');
     const size = [base ? servingsText(servings) : `${mult}×`, parts ? partsText(parts) : ''].filter(Boolean).join(', ');
     toast(existing ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
-      { label: 'View list', run: () => go('#/list') });
+      sideMode() === 'open' ? undefined : { label: 'View list', run: () => go('#/list') });
   };
 
   draw();
@@ -921,7 +927,8 @@ function listLink() {
 
 function onShopChange() {
   renderAccount();
-  if (document.body.dataset.view === 'list') updateList();
+  if ($('#shop-body')) updateList();
+  else renderSide();
 }
 
 async function configFolder() {
@@ -949,16 +956,30 @@ async function showList() {
     const b = $('#signin2'); if (b) b.onclick = () => signInFlow();
     return;
   }
+  await mountList($('#main'), false);
+}
+
+/**
+ * Puts the shopping list in `root`: the list page, or the side panel on wide
+ * screens. Only one is shown at a time, so the ids stay unique.
+ */
+async function mountList(root, panel) {
   const view = saved.get('listView', 'aisle');
-  $('#main').innerHTML = `
-    <section class="shop">
-      <div class="shop-head">
+  const count = '<span class="shop-count" id="shop-count"></span>';
+  root.innerHTML = `
+    <section class="shop${panel ? ' shop-panel' : ''}">
+      ${panel ? `<div class="side-head">
+        <h2>Shopping list</h2>${count}
+        <a class="icon-btn" href="#/list" title="Open as a page" aria-label="Open the shopping list as a page">${EXPAND_ICON}</a>
+        <button class="icon-btn" id="side-close" title="Close (L)" aria-label="Close the shopping list">${PANEL_ICON}</button>
+      </div>
+      <p class="shop-status" id="shop-status" aria-live="polite"></p>` : `<div class="shop-head">
         <h1>Shopping list</h1>
         <p class="shop-status" id="shop-status" aria-live="polite"></p>
-      </div>
+      </div>`}
       <form class="shop-add" id="shop-add" autocomplete="off">
         <label class="sr" for="shop-new">Add an item</label>
-        <input id="shop-new" list="shop-names" placeholder="Add an item, like 2 kg potatoes" enterkeyhint="done">
+        <input id="shop-new" list="shop-names" placeholder="${panel ? 'Add an item' : 'Add an item, like 2 kg potatoes'}" enterkeyhint="done">
         <button class="btn btn-primary">Add</button>
         <datalist id="shop-names"></datalist>
       </form>
@@ -967,30 +988,31 @@ async function showList() {
           <button type="button" data-view="aisle" aria-pressed="${view === 'aisle'}">By aisle</button>
           <button type="button" data-view="recipe" aria-pressed="${view === 'recipe'}">By recipe</button>
         </div>
-        <span class="shop-count" id="shop-count"></span>
+        ${panel ? '' : count}
         <button class="link-btn" id="clear-checked">Clear checked</button>
       </div>
       <div class="shop-body" id="shop-body"><p class="loading">Loading…</p></div>
       <button class="btn btn-quiet btn-danger shop-clear" id="clear-all">Clear shopping list</button>
     </section>`;
 
-  $('#shop-add').onsubmit = (ev) => {
+  if (panel) $('#side-close', root).onclick = () => setSide('closed');
+  $('#shop-add', root).onsubmit = (ev) => {
     ev.preventDefault();
-    const input = $('#shop-new');
+    const input = $('#shop-new', root);
     const it = shop.parseItem(input.value);
     if (!it.name) return;
     S.shop.do({ t: 'addItem', id: shop.newId(), ...it, key: shop.lookup(shopCtx().aisle, it.name).key });
     input.value = '';
   };
-  $$('.seg [data-view]').forEach((b) => {
+  $$('.seg [data-view]', root).forEach((b) => {
     b.onclick = () => {
       saved.set('listView', b.dataset.view);
-      $$('.seg [data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      $$('.seg [data-view]', root).forEach((x) => x.setAttribute('aria-pressed', x === b));
       updateList();
     };
   });
-  $('#clear-checked').onclick = clearChecked;
-  $('#clear-all').onclick = async () => {
+  $('#clear-checked', root).onclick = clearChecked;
+  $('#clear-all', root).onclick = async () => {
     const ok = await ask({
       title: 'Clear the shopping list?',
       body: 'This removes every recipe and item from the list, on all your devices.',
@@ -998,7 +1020,7 @@ async function showList() {
     });
     if (ok) undoable('Shopping list cleared.', { t: 'clearAll' });
   };
-  const body = $('#shop-body');
+  const body = $('#shop-body', root);
   body.addEventListener('change', (ev) => {
     const box = ev.target.closest('.tick');
     if (!box) return;
@@ -1016,12 +1038,68 @@ async function showList() {
 
   await initParser();
   S.parserReady = true;
-  if (document.body.dataset.view !== 'list') return;
+  if (!body.isConnected) return; // moved on while the parser loaded
   const names = new Set([...shopCtx().aisle.names.values()].map((x) => x.name));
-  $('#shop-names').innerHTML = [...names].sort(collator.compare).map((n) => `<option value="${esc(n)}">`).join('');
+  $('#shop-names', root).innerHTML = [...names].sort(collator.compare).map((n) => `<option value="${esc(n)}">`).join('');
   updateList();
   startListPolling();
   if (S.live !== 'loading') S.shop.sync();
+}
+
+// ---------------------------------------------------------------- side panel (wide screens)
+
+// On a wide screen the list sits on the right: a slim rail when closed, a
+// panel beside the recipes when open, remembered per device. It is not shown
+// on the list page itself, and the editor keeps it closed for the space.
+const PANEL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15M9 10l2 2-2 2"/></svg>';
+const EXPAND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5l-6 6M4.5 19.5l6-6"/></svg>';
+const wide = window.matchMedia('(min-width: 1100px)');
+
+function sideMode() {
+  if (!wide.matches || !S.shop || !drive.wasSignedIn()) return 'off';
+  const { path } = parseHash();
+  if (path === '/list') return 'off';
+  if (path === '/new' || path.startsWith('/edit/')) return 'rail';
+  return saved.get('sidePanel', 'closed') === 'open' ? 'open' : 'rail';
+}
+
+function setSide(state) {
+  saved.set('sidePanel', state);
+  renderSide();
+}
+
+function renderSide() {
+  const el = $('#side');
+  const mode = sideMode();
+  document.body.classList.toggle('has-side', mode !== 'off');
+  document.body.classList.toggle('side-open', mode === 'open');
+  el.hidden = mode === 'off';
+  if (mode === 'open') {
+    if (!$('.shop-panel', el)) mountList(el, true);
+    else if (!listPoll) startListPolling(); // a page change stopped it
+    return;
+  }
+  if ($('.shop-panel', el)) stopListPolling();
+  if (mode === 'off') { el.innerHTML = ''; return; }
+  let n = 0;
+  if (S.parserReady) {
+    try { n = [...built().groups.values()].filter((g) => toBuy(g) && !g.checked).length; } catch { /* list not ready */ }
+  }
+  el.innerHTML = `<button class="rail" id="rail" title="Shopping list (L)" aria-label="Open the shopping list${n ? `, ${n} to buy` : ''}">
+    ${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>${PANEL_ICON}
+  </button>`;
+  $('#rail').onclick = () => setSide('open');
+}
+
+function initSide() {
+  wide.addEventListener('change', renderSide);
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key.toLowerCase() !== 'l' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.target.closest('input, textarea, select, [contenteditable]') || $('#modal').open) return;
+    if (sideMode() === 'off') return;
+    ev.preventDefault();
+    setSide(sideMode() === 'open' ? 'closed' : 'open');
+  });
 }
 
 const RENEW_SOON = 10 * 60_000;
@@ -1070,7 +1148,9 @@ function updateList() {
 
 function shopRow(g, { total = g.total, recipeId = '', item = '', note = '' } = {}) {
   const qty = amount(total);
-  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}" data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
+  const f = S.flash;
+  const isNew = f && Date.now() < f.until && f.keys.has(g.key) && (!recipeId || recipeId === f.recipeId) && !item;
+  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}${isNew ? ' is-new' : ''}" data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
     <label class="shop-main">
       <input type="checkbox" class="tick" ${g.checked ? 'checked' : ''}>
       <span class="ing-qty">${esc(qty)}</span>
