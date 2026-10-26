@@ -199,6 +199,47 @@ export function fmtGrouped(gq) {
   return parts.map(fmtQuantity).filter(Boolean).join(' + ');
 }
 
+/** Format a plain amount, like a quantity: (1500, "g") -> "1.5 kg". */
+export function fmtAmount(n, unit) {
+  return fmtQuantity({ value: { type: 'number', value: { type: 'regular', value: n } }, unit: unit || null });
+}
+
+// Ranges count as their top end: buy enough for the larger amount.
+function amountOf(q) {
+  if (!q || !q.value) return q?.unit ? { text: q.unit } : null;
+  const v = q.value;
+  if (v.type === 'text') return { text: [v.value, q.unit].filter(Boolean).join(' ') };
+  const n = v.type === 'range' ? numOf(v.value.end) : numOf(v.value);
+  return n == null ? null : { n, unit: q.unit || '' };
+}
+
+/**
+ * The ingredients to buy for a recipe at `factor`, one entry per ingredient:
+ * [{ name, ref, optional, amounts: [{ n, unit } | { text }] }]. `ref` is the
+ * path of a linked recipe, if the ingredient is one.
+ */
+export function shoppingIngredients(src, factor = 1) {
+  const { recipe, grouped } = parseRecipe(src, factor);
+  if (!recipe) return [];
+  const list = grouped.length ? grouped : recipe.ingredients.map((ing, index) => ({ index, single: ing.quantity }));
+  const out = [];
+  for (const g of list) {
+    const ing = recipe.ingredients[g.index];
+    if (!ing || !shouldList(ing)) continue;
+    const qs = [];
+    if (g.quantity) {
+      for (const q of Object.values(g.quantity.known || {})) if (q) qs.push(q);
+      for (const q of Object.values(g.quantity.unknown || {})) qs.push(q);
+      if (g.quantity.no_unit) qs.push(g.quantity.no_unit);
+      for (const q of g.quantity.other || []) qs.push(q);
+    } else if (g.single) qs.push(g.single);
+    const r = ing.reference;
+    const ref = r ? [...(r.components || []), r.name].filter((p) => p && p !== '.').join('/') : null;
+    out.push({ name: ing.name, ref, optional: /OPT/.test(ing.modifiers || ''), amounts: qs.map(amountOf).filter(Boolean) });
+  }
+  return out;
+}
+
 /** Scale a "10%pancakes" / "1%l" style yield value. */
 export function fmtYield(raw, factor) {
   if (!raw) return '';

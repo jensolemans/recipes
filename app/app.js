@@ -1,8 +1,9 @@
 import {
   initParser, parseRecipe, shouldList, readFrontmatter, parseDuration, fmtDuration,
-  ingredientNames, fmtQuantity, fmtGrouped, fmtYield,
+  ingredientNames, fmtQuantity, fmtGrouped, fmtYield, fmtAmount, shoppingIngredients,
 } from './cooklang.js';
 import * as drive from './drive.js';
+import * as shop from './shopping.js';
 
 // ---------------------------------------------------------------- helpers
 
@@ -60,6 +61,9 @@ const S = {
   ignoreHash: false,
   currentHash: '',
   checked: new Map(), // path -> Set of checked ingredient keys
+  shop: null, // shopping list sync, when sign-in is set up
+  conf: { aisle: saved.get('conf.aisle', null), pantry: saved.get('conf.pantry', null) }, // { id, md5, text }
+  parserReady: false,
 };
 
 function makeEntry(r) {
@@ -118,7 +122,11 @@ async function boot() {
   $$('[data-brand]').forEach((el) => { el.textContent = title; });
 
   drive.configure(S.config.clientId);
-  initParser().catch(() => {});
+  if (drive.enabled()) {
+    S.shop = shop.createSync({ drive, configFolder, onChange: onShopChange });
+    window.addEventListener('online', () => { if (drive.wasSignedIn()) S.shop.sync(); });
+  }
+  initParser().then(() => { S.parserReady = true; renderAccount(); }).catch(() => {});
   renderAccount();
   renderFoot();
   window.addEventListener('hashchange', onHashChange);
@@ -126,7 +134,11 @@ async function boot() {
   route();
   if (drive.signedIn()) goLive();
   watchSession();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) watchSession(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    watchSession();
+    if (document.body.dataset.view === 'list') S.shop?.sync();
+  });
 }
 
 // ---------------------------------------------------------------- routing
@@ -162,8 +174,10 @@ function route() {
   S.currentHash = location.hash || '#/';
   renderAccount();
   stopWakeLock();
+  stopListPolling();
   const { path, params } = parseHash();
   document.body.dataset.view = '';
+  if (path === '/list') return showList();
   if (path.startsWith('/r/')) return showRecipe(path.slice(3), params);
   if (path.startsWith('/edit/')) return showEditor(path.slice(6));
   if (path === '/new') return showEditor(null);
@@ -215,13 +229,14 @@ function initTheme() {
 function renderAccount() {
   const el = $('#account');
   if (!drive.enabled()) { el.innerHTML = ''; return; }
+  const list = drive.wasSignedIn() ? listLink() : '';
   if (S.live === 'loading') {
-    el.innerHTML = '<span class="sync">Syncing with Google Drive…</span>';
+    el.innerHTML = `<span class="sync">Syncing with Google Drive…</span>${list}`;
     return;
   }
   if (S.live === 'on' && drive.signedIn()) {
     const u = drive.user() || {};
-    el.innerHTML = `
+    el.innerHTML = `${list}
       <a class="btn btn-primary btn-sm" href="#/new">New recipe</a>
       <details class="menu">
         <summary class="avatar" aria-label="Account menu">${esc((u.name || u.email || '?').charAt(0).toUpperCase())}</summary>
@@ -233,7 +248,13 @@ function renderAccount() {
           <button class="menu-item" data-action="signout">Sign out</button>
         </div>
       </details>`;
-    el.querySelector('[data-action="signout"]').onclick = () => { drive.signOut(); location.reload(); };
+    el.querySelector('[data-action="signout"]').onclick = () => {
+      drive.signOut();
+      S.shop?.reset();
+      saved.set('conf.aisle', null);
+      saved.set('conf.pantry', null);
+      location.reload();
+    };
     el.querySelector('[data-action="refresh"]').onclick = async () => {
       el.querySelector('details').open = false;
       try { await drive.renewIfNeeded(); } catch (e) { toast(e.message); renderAccount(); return; }
@@ -243,9 +264,9 @@ function renderAccount() {
   }
   if (S.live === 'on') {
     // Live data is loaded but the hour ran out: renew in place, keep the page.
-    el.innerHTML = '<button class="btn btn-quiet btn-sm" id="signin">Renew sign-in</button>';
+    el.innerHTML = `${list}<button class="btn btn-quiet btn-sm" id="signin">Renew sign-in</button>`;
   } else {
-    el.innerHTML = '<button class="link-btn" id="signin">Sign in</button>';
+    el.innerHTML = `${list}<button class="link-btn" id="signin">Sign in</button>`;
   }
   $('#signin').onclick = () => signInFlow();
 }
@@ -254,6 +275,7 @@ async function signInFlow() {
   try {
     await drive.signIn();
     watchSession();
+    S.shop?.sync();
     if (S.live === 'on') { renderAccount(); toast('Signed in again for another hour.'); return; }
     await goLive();
   } catch (e) {
@@ -350,8 +372,11 @@ async function goLive() {
       });
     }
     for (const path of [...S.recipes.keys()]) if (!seen.has(path)) S.recipes.delete(path);
+    tasks.push(() => loadConf('aisle', files.get(shop.AISLE_PATH)), () => loadConf('pantry', files.get(shop.PANTRY_PATH)));
     await pool(tasks, 6);
     S.live = 'on';
+    S.shop?.useFile(files.get(shop.LIST_PATH));
+    S.shop?.sync();
   } catch (e) {
     S.live = 'off';
     toast(e.message || 'Could not load recipes from Google Drive.');
@@ -359,6 +384,15 @@ async function goLive() {
   renderAccount();
   renderFoot();
   if (!S.dirty) route();
+}
+
+/** Reads aisle.conf or pantry.conf from Drive, reusing the saved copy when it has not changed. */
+async function loadConf(kind, f) {
+  const old = S.conf[kind];
+  if (!f) { S.conf[kind] = { id: null, md5: null, text: '' }; }
+  else if (old && old.md5 === f.md5Checksum) { S.conf[kind] = { ...old, id: f.id }; }
+  else S.conf[kind] = { id: f.id, md5: f.md5Checksum, text: await drive.readText(f.id) };
+  saved.set(`conf.${kind}`, S.conf[kind]);
 }
 
 // ---------------------------------------------------------------- home
@@ -745,6 +779,7 @@ async function showRecipe(rawPath, params) {
           ${sourceLine(e)}
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
+            ${S.shop && S.live === 'on' ? '<button class="btn btn-primary btn-sm" id="add-list">Add to shopping list</button>' : ''}
             ${'wakeLock' in navigator ? '<button class="btn btn-quiet btn-sm" id="wake" aria-pressed="false">Keep screen on</button>' : ''}
             ${canEdit ? `<a class="btn btn-quiet btn-sm" href="#/edit/${encPath(path)}">Edit</a>` : ''}
           </div>
@@ -813,8 +848,340 @@ async function showRecipe(rawPath, params) {
   const wake = $('#wake');
   if (wake) wake.onclick = () => toggleWakeLock(wake);
 
+  const addList = $('#add-list');
+  if (addList) addList.onclick = () => {
+    const factor = base ? servings / base : mult;
+    const already = S.shop.list.recipes.some((r) => r.path === path);
+    S.shop.do({
+      t: 'addRecipe', id: shop.newId(), path, title: e.title, servings: base ? servings : null, factor,
+      keys: shop.recipeKeys(e.src, factor, shopCtx()),
+    });
+    const size = base ? `${servings} ${servings === 1 ? 'serving' : 'servings'}` : `${mult}×`;
+    toast(already ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
+      { label: 'View list', run: () => go('#/list') });
+  };
+
   draw();
   window.scrollTo({ top: 0 });
+}
+
+// ---------------------------------------------------------------- shopping list
+
+const BASKET_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5h17l-1.7 9.1a2 2 0 0 1-2 1.6H7.2a2 2 0 0 1-2-1.6z"/><path d="m8.5 9.5 3-6M15.5 9.5l-3-6"/></svg>';
+const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
+
+let aisleCache = { text: null, parsed: null };
+let pantryCache = { text: null, parsed: null };
+const ingMemo = new Map();
+
+/** What the shopping list needs to know about recipes, aisles and the pantry. */
+function shopCtx() {
+  const a = S.conf.aisle?.text || '';
+  if (aisleCache.text !== a) aisleCache = { text: a, parsed: shop.parseAisle(a) };
+  const p = S.conf.pantry?.text || '';
+  if (pantryCache.text !== p) pantryCache = { text: p, parsed: shop.parsePantry(p) };
+  return {
+    aisle: aisleCache.parsed,
+    pantry: pantryCache.parsed,
+    recipe: (path) => S.recipes.get(path),
+    ingredients: (src, factor) => {
+      const k = `${factor}|${src}`;
+      if (!ingMemo.has(k)) {
+        if (ingMemo.size > 300) ingMemo.clear();
+        ingMemo.set(k, shoppingIngredients(src, factor));
+      }
+      return ingMemo.get(k);
+    },
+  };
+}
+
+const built = () => shop.buildList(S.shop.list, shopCtx());
+const toBuy = (g) => !g.pantry && !g.home;
+const amount = (total) => shop.totalText(total, fmtAmount);
+const servingsText = (n) => `${n} ${n === 1 ? 'serving' : 'servings'}`;
+const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+function listLink() {
+  let n = 0;
+  if (S.shop && S.parserReady) {
+    try { n = [...built().groups.values()].filter((g) => toBuy(g) && !g.checked).length; } catch { /* list not ready */ }
+  }
+  return `<a class="icon-link" href="#/list" title="Shopping list" aria-label="Shopping list${n ? `, ${n} to buy` : ''}">${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}</a>`;
+}
+
+function onShopChange() {
+  renderAccount();
+  if (document.body.dataset.view === 'list') updateList();
+}
+
+async function configFolder() {
+  if (!S.drive) throw Object.assign(new Error('Still loading from Google Drive.'), { code: 'wait' });
+  let id = S.drive.folders.get('config');
+  if (!id) {
+    id = (await drive.createFolder('config', S.config.folderId)).id;
+    S.drive.folders.set('config', id);
+  }
+  return id;
+}
+
+let listPoll = null;
+function startListPolling() {
+  stopListPolling();
+  listPoll = setInterval(() => { if (!document.hidden) S.shop.sync(); }, 15000);
+}
+function stopListPolling() { clearInterval(listPoll); listPoll = null; }
+
+async function showList() {
+  document.body.dataset.view = 'list';
+  document.title = `Shopping list | ${S.config.title || 'Recipes'}`;
+  if (!S.shop || !drive.wasSignedIn()) {
+    $('#main').innerHTML = `<div class="empty"><h1>Sign in to use the shopping list</h1><p>The shopping list is saved in Google Drive, so it is the same on your phone and your computer.</p>${S.shop ? '<button class="btn btn-primary" id="signin2">Sign in with Google</button>' : ''}</div>`;
+    const b = $('#signin2'); if (b) b.onclick = () => signInFlow();
+    return;
+  }
+  const view = saved.get('listView', 'aisle');
+  $('#main').innerHTML = `
+    <section class="shop">
+      <div class="shop-head">
+        <h1>Shopping list</h1>
+        <p class="shop-status" id="shop-status" aria-live="polite"></p>
+      </div>
+      <form class="shop-add" id="shop-add" autocomplete="off">
+        <label class="sr" for="shop-new">Add an item</label>
+        <input id="shop-new" list="shop-names" placeholder="Add an item, like 2 kg potatoes" enterkeyhint="done">
+        <button class="btn btn-primary">Add</button>
+        <datalist id="shop-names"></datalist>
+      </form>
+      <div class="shop-bar">
+        <div class="seg" role="group" aria-label="Show the list">
+          <button type="button" data-view="aisle" aria-pressed="${view === 'aisle'}">By aisle</button>
+          <button type="button" data-view="recipe" aria-pressed="${view === 'recipe'}">By recipe</button>
+        </div>
+        <span class="shop-count" id="shop-count"></span>
+        <button class="link-btn" id="clear-checked">Clear checked</button>
+      </div>
+      <div class="shop-body" id="shop-body"><p class="loading">Loading…</p></div>
+      <button class="btn btn-quiet btn-danger shop-clear" id="clear-all">Clear shopping list</button>
+    </section>`;
+
+  $('#shop-add').onsubmit = (ev) => {
+    ev.preventDefault();
+    const input = $('#shop-new');
+    const it = shop.parseItem(input.value);
+    if (!it.name) return;
+    S.shop.do({ t: 'addItem', id: shop.newId(), ...it, key: shop.lookup(shopCtx().aisle, it.name).key });
+    input.value = '';
+  };
+  $$('.seg [data-view]').forEach((b) => {
+    b.onclick = () => {
+      saved.set('listView', b.dataset.view);
+      $$('.seg [data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+      updateList();
+    };
+  });
+  $('#clear-checked').onclick = clearChecked;
+  $('#clear-all').onclick = async () => {
+    const ok = await ask({
+      title: 'Clear the shopping list?',
+      body: 'This removes every recipe and item from the list, on all your devices.',
+      actions: [{ label: 'Keep it', value: false }, { label: 'Clear list', value: true, danger: true }],
+    });
+    if (ok) undoable('Shopping list cleared.', { t: 'clearAll' });
+  };
+  const body = $('#shop-body');
+  body.addEventListener('change', (ev) => {
+    const box = ev.target.closest('.tick');
+    if (!box) return;
+    S.shop.do({ t: 'check', key: box.closest('.shop-row').dataset.key, on: box.checked });
+  });
+  body.addEventListener('click', (ev) => {
+    const more = ev.target.closest('[data-more]');
+    if (more) { itemSheet(more.closest('.shop-row')); return; }
+    const rem = ev.target.closest('[data-remove-recipe]');
+    if (rem) {
+      const r = S.shop.list.recipes.find((x) => x.id === rem.dataset.removeRecipe);
+      if (r) undoable(`Removed ${r.title || 'the recipe'} from the list.`, { t: 'removeRecipe', id: r.id });
+    }
+  });
+
+  await initParser();
+  S.parserReady = true;
+  if (document.body.dataset.view !== 'list') return;
+  const names = new Set([...shopCtx().aisle.names.values()].map((x) => x.name));
+  $('#shop-names').innerHTML = [...names].sort(collator.compare).map((n) => `<option value="${esc(n)}">`).join('');
+  updateList();
+  startListPolling();
+  if (S.live !== 'loading') S.shop.sync();
+}
+
+function shopStatus() {
+  const s = S.shop;
+  const waiting = s.pendingCount ? ` ${s.pendingCount === 1 ? 'One change waits' : `${s.pendingCount} changes wait`} on this device.` : '';
+  switch (s.status) {
+    case 'signin': return `Not synced.${waiting} <button class="link-btn" id="shop-renew">Renew sign-in</button>`;
+    case 'offline': return `Offline.${waiting || ' '} Changes sync when you are back online.`;
+    case 'error': return `Could not sync with Google Drive.${waiting} <button class="link-btn" id="shop-retry">Try again</button>`;
+    case 'syncing': return s.pendingCount ? 'Saving…' : 'Syncing…';
+    case 'ok': return s.pendingCount ? 'Saving…' : 'Saved in Google Drive.';
+    default: return s.pendingCount ? 'Saving…' : '';
+  }
+}
+
+function updateList() {
+  const body = $('#shop-body');
+  if (!body || !S.parserReady) return;
+  const st = $('#shop-status');
+  st.innerHTML = shopStatus();
+  const renew = $('#shop-renew'); if (renew) renew.onclick = () => signInFlow();
+  const retry = $('#shop-retry'); if (retry) retry.onclick = () => S.shop.sync();
+
+  const b = built();
+  const groups = [...b.groups.values()];
+  const buy = groups.filter(toBuy);
+  const empty = !b.recipes.length && !b.manual.length;
+  $('#shop-count').textContent = buy.length ? `${buy.filter((g) => g.checked).length} of ${buy.length}` : '';
+  $('#clear-checked').hidden = !groups.some((g) => g.checked);
+  $('#clear-all').hidden = empty;
+  if (empty) {
+    body.innerHTML = `<div class="shop-empty"><p>Your shopping list is empty.</p><p class="muted">Open a recipe and tap Add to shopping list, or add an item above.</p></div>`;
+    return;
+  }
+  body.innerHTML = saved.get('listView', 'aisle') === 'recipe' ? recipeView(b) : aisleView(b);
+}
+
+function shopRow(g, { total = g.total, recipeId = '', item = '', note = '' } = {}) {
+  const qty = amount(total);
+  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}" data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
+    <label class="shop-main">
+      <input type="checkbox" class="tick" ${g.checked ? 'checked' : ''}>
+      <span class="ing-qty">${esc(qty)}</span>
+      <span class="shop-name">${esc(g.name)}${note ? `<small>${esc(note)}</small>` : ''}</span>
+    </label>
+    <button class="more-btn" data-more aria-label="More for ${esc(g.name)}">${MORE_ICON}</button>
+  </li>`;
+}
+
+function aisleView(b) {
+  const ctx = shopCtx();
+  const groups = [...b.groups.values()];
+  const byName = (x, y) => collator.compare(x.name, y.name);
+  const from = (g) => [...g.sources.map((s) => s.title), ...(g.items.length ? ['added by you'] : [])].join(', ');
+  const secs = ctx.aisle.sections.map((name) => ({ name, items: [] }));
+  const other = { name: 'Other', items: [] };
+  for (const g of groups) if (toBuy(g) && !g.checked) (secs[g.sec] || other).items.push(g);
+  const block = (title, items, cls = '') => `<section class="shop-sec ${cls}"><h2>${title}</h2><ul class="shop-list">${items.sort(byName).map((g) => shopRow(g, { note: from(g) })).join('')}</ul></section>`;
+  const out = [...secs, other].filter((s) => s.items.length).map((s) => block(esc(cap(s.name)), s.items));
+  const have = groups.filter((g) => !toBuy(g) && !g.checked);
+  if (have.length) out.push(`<details class="shop-sec shop-have"><summary>Probably have <span>${have.length}</span></summary><ul class="shop-list">${have.sort(byName).map((g) => shopRow(g, { note: from(g) })).join('')}</ul></details>`);
+  const done = groups.filter((g) => g.checked);
+  if (done.length) out.push(block(`In the basket <span>${done.length}</span>`, done, 'shop-done'));
+  return out.join('');
+}
+
+function recipeView(b) {
+  const out = b.recipes.map((r) => {
+    const q = r.servings ? `?s=${r.servings}` : r.factor && r.factor !== 1 ? `?x=${r.factor}` : '';
+    const size = r.servings ? servingsText(r.servings) : r.factor && r.factor !== 1 ? `${r.factor}×` : '';
+    const title = r.missing ? esc(r.title || prettifyFile(r.path.split('/').pop())) : `<a href="#/r/${encPath(r.path)}${q}">${esc(r.title)}</a>`;
+    const rows = r.lines.map((l) => shopRow(l.group, {
+      total: l.total, recipeId: r.id,
+      note: [toBuy(l.group) ? '' : 'probably have', l.optional ? 'optional' : ''].filter(Boolean).join(', '),
+    }));
+    return `<section class="shop-recipe">
+      <div class="shop-recipe-head"><h2>${title}</h2><span>${esc(size)}</span><button class="link-btn" data-remove-recipe="${esc(r.id)}">Remove</button></div>
+      ${r.missing ? '<p class="muted">This recipe is no longer in your collection.</p>'
+        : rows.length ? `<ul class="shop-list">${rows.join('')}</ul>` : '<p class="muted">Nothing left to buy.</p>'}
+    </section>`;
+  });
+  if (b.manual.length) {
+    out.push(`<section class="shop-recipe"><div class="shop-recipe-head"><h2>Added by you</h2></div>
+      <ul class="shop-list">${b.manual.map((it) => shopRow(it.group, { total: it.total, item: it.id })).join('')}</ul></section>`);
+  }
+  return out.join('');
+}
+
+/** Makes a change with an Undo button in the message. */
+function undoable(msg, op) {
+  const before = S.shop.list;
+  S.shop.do(op);
+  toast(msg, { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
+}
+
+function clearChecked() {
+  const b = built();
+  const keys = new Set([...b.groups.values()].filter((g) => g.checked).map((g) => g.key));
+  if (!keys.size) return;
+  undoable(`Cleared ${keys.size} checked ${keys.size === 1 ? 'item' : 'items'}.`, {
+    t: 'removeKeys',
+    keys: [...keys],
+    itemIds: b.manual.filter((it) => keys.has(it.key)).map((it) => it.id),
+    // Recipes with nothing left to buy drop off the list.
+    dropRecipes: b.recipes.filter((r) => !r.missing && r.lines.every((l) => keys.has(l.key) || !toBuy(l.group))).map((r) => r.id),
+  });
+}
+
+async function itemSheet(row) {
+  const b = built();
+  const g = b.groups.get(row.dataset.key);
+  if (!g) return;
+  const ctx = shopCtx();
+  const { recipe: recipeId, item: itemId } = row.dataset;
+  const uses = [
+    ...g.sources.map((s) => (amount(s.total) ? `${s.title} (${amount(s.total)})` : s.title)),
+    ...b.manual.filter((it) => it.key === g.key).map((it) => (amount(it.total) ? `you (${amount(it.total)})` : 'you')),
+  ];
+  const where = g.home ? 'Made at home.' : g.sec >= 0 ? `Aisle: ${cap(ctx.aisle.sections[g.sec])}.` : 'Not in any aisle yet.';
+  const recipe = recipeId ? b.recipes.find((r) => r.id === recipeId) : null;
+  const actions = [{ label: 'Close', value: null }];
+  if (g.sec < 0 && !g.home) actions.push({ label: 'Choose aisle', value: 'aisle' });
+  if (!g.home) actions.push({ label: g.pantry ? 'Need to buy it' : 'Always have this', value: 'pantry' });
+  actions.push({ label: recipe ? `Remove from ${recipe.title}` : 'Remove from list', value: 'remove', danger: true });
+  const choice = await ask({ title: cap(g.name), body: `${uses.length ? `For ${joinAnd(uses)}. ` : ''}${where}`, actions });
+
+  if (choice === 'remove') {
+    if (recipe) undoable(`Removed ${g.name} from ${recipe.title}.`, { t: 'removeLine', recipeId, key: g.key });
+    else if (itemId) undoable(`Removed ${g.name}.`, { t: 'removeItem', id: itemId });
+    else undoable(`Removed ${g.name} from the list.`, { t: 'removeKeys', keys: [g.key], itemIds: g.items });
+  } else if (choice === 'pantry') {
+    if (g.pantry) {
+      if (await editConf('pantry', (t) => shop.removeFromPantry(t, g.key))) toast(`${cap(g.name)} is back on the list.`);
+    } else if (await editConf('pantry', (t) => shop.addToPantry(t, g.name))) {
+      toast(`${cap(g.name)} now goes under Probably have, saved in pantry.conf.`, {
+        label: 'Undo', run: () => editConf('pantry', (t) => shop.removeFromPantry(t, g.key)),
+      });
+    }
+  } else if (choice === 'aisle') {
+    const sections = ctx.aisle.sections;
+    const i = await pick({ title: `Where is ${g.name}?`, body: 'This is saved in aisle.conf, so it is sorted the same way next time.', label: 'Aisle', options: sections.map(cap) });
+    if (i != null && await editConf('aisle', (t) => shop.addToAisle(t, sections[i], g.name))) toast(`${cap(g.name)} now goes under ${cap(sections[i])}.`);
+  }
+}
+
+/** Changes aisle.conf or pantry.conf in Drive. Call straight from a tap. */
+async function editConf(kind, change) {
+  const name = `${kind}.conf`;
+  try {
+    await drive.renewIfNeeded();
+    watchSession();
+    const c = S.conf[kind] || { id: null, md5: null, text: '' };
+    // Start from the newest version, in case the Cooklang app changed it.
+    let text = c.text;
+    if (c.id) {
+      const meta = await drive.getMeta(c.id);
+      if (meta.md5Checksum !== c.md5) text = await drive.readText(c.id);
+    }
+    const next = change(text);
+    const meta = c.id ? await drive.updateContent(c.id, next) : await drive.create(name, await configFolder(), next);
+    S.conf[kind] = { id: meta.id, md5: meta.md5Checksum, text: next };
+    saved.set(`conf.${kind}`, S.conf[kind]);
+    if (S.drive) S.drive.files.set(`config/${name}`, meta);
+    onShopChange();
+    return true;
+  } catch (e) {
+    toast(e.message || `Could not save ${name}.`);
+    renderAccount();
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------- wake lock
@@ -1231,12 +1598,14 @@ async function showEditor(rawPath) {
 // ---------------------------------------------------------------- toast + modal
 
 let toastTimer;
-function toast(msg) {
+/** Shows a short message, optionally with one action button such as Undo. */
+function toast(msg, action) {
   const el = $('#toast');
-  el.textContent = msg;
+  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="toast-btn">${esc(action.label)}</button>` : ''}`;
+  if (action) el.querySelector('.toast-btn').onclick = () => { el.classList.remove('is-on'); action.run(); };
   el.classList.add('is-on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('is-on'), 5200);
+  toastTimer = setTimeout(() => el.classList.remove('is-on'), action ? 7000 : 5200);
 }
 
 function ask({ title, body, actions }) {
@@ -1250,6 +1619,26 @@ function ask({ title, body, actions }) {
     dlg.onclose = () => {
       const i = Number(dlg.returnValue);
       resolve(Number.isInteger(i) && actions[i] ? actions[i].value : actions[0].value);
+      dlg.returnValue = '';
+    };
+    dlg.showModal();
+  });
+}
+
+/** Asks to choose one option from a list. Resolves with its index, or null. */
+function pick({ title, body, label, options }) {
+  const dlg = $('#modal');
+  dlg.innerHTML = `<form method="dialog">
+    <h2>${esc(title)}</h2>
+    <p>${esc(body)}</p>
+    <label class="field modal-field"><span>${esc(label)}</span>
+      <select id="pick">${options.map((o, i) => `<option value="${i}">${esc(o)}</option>`).join('')}</select>
+    </label>
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary">Save</button></div>
+  </form>`;
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      resolve(dlg.returnValue === 'ok' ? Number($('#pick', dlg).value) : null);
       dlg.returnValue = '';
     };
     dlg.showModal();

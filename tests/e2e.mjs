@@ -332,6 +332,137 @@ const newPage = async (opts = {}) => {
   await ctx.close();
 }
 
+// 7. shopping list, saved in the fake Drive
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => {
+    if (localStorage.getItem('test.seeded')) return;
+    localStorage.setItem('test.seeded', '1');
+    localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
+    localStorage.setItem('recipes.email', 'jens@example.com');
+  });
+  await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', fakeConfig);
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  const config = byName('ROOT', 'config').id;
+  const listFile = () => byName(config, 'shopping_list.json');
+  const listJson = () => JSON.parse(listFile().content.toString());
+  const until = async (fn, what) => {
+    for (let i = 0; i < 60; i++) { try { if (await fn()) return true; } catch { /* not yet */ } await page.waitForTimeout(100); }
+    console.log('timed out waiting for', what);
+    return false;
+  };
+  const row = (name) => page.locator('.shop-row', { has: page.locator('.shop-name', { hasText: new RegExp(`^${name}`) }) }).first();
+  const qtyOf = async (name) => (await row(name).locator('.ing-qty').textContent()).trim();
+  const sync = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.waitForSelector('#add-list', { timeout: 15000 });
+  await page.click('#add-list');
+  ok((await page.textContent('#toast')).includes('Added Crêpes'), 'adding a recipe says so');
+  await page.goto(`${BASE}/#/r/3%20Mains/Pasta/lasagna?s=4`);
+  await page.waitForSelector('#add-list');
+  await page.click('#add-list');
+  ok(await until(() => listJson().recipes.length === 2, 'list file'), 'list file created in Drive config folder with both recipes');
+  ok(listJson().recipes.find((r) => r.path.endsWith('lasagna')).servings === 4, 'the chosen servings are saved');
+
+  await page.goto(`${BASE}/#/list`);
+  await page.waitForSelector('.shop-row');
+  ok(await qtyOf('eggs') === '5½', `eggs combine across spellings and recipes (${await qtyOf('eggs')})`);
+  ok(await qtyOf('milk') === '850 ml', `milk and whole milk combine (${await qtyOf('milk')})`);
+  const secs = await page.$$eval('.shop-sec h2', (hs) => hs.map((h) => h.textContent.trim()));
+  ok(secs[0] === 'Produce' && secs.indexOf('Dairy & eggs') < secs.indexOf('Baking') && secs.indexOf('Baking') < secs.indexOf('Wine, beer & spirits'), `sections follow aisle.conf (${secs.join(' | ')})`);
+  ok(await page.isVisible('.shop-have summary'), 'made-at-home things go under Probably have');
+  ok(await page.textContent('.shop-have').then((t) => t.includes('batter') && t.includes('water')), 'batter and water are under Probably have');
+
+  // add items by hand
+  await page.fill('#shop-new', 'frozen fries');
+  await page.press('#shop-new', 'Enter');
+  await page.fill('#shop-new', 'bagged lettuce');
+  await page.press('#shop-new', 'Enter');
+  await page.fill('#shop-new', '1 kg onions');
+  await page.press('#shop-new', 'Enter');
+  await page.waitForSelector('.shop-name:has-text("frozen fries")');
+  ok((await qtyOf('onion')).startsWith('1 kg + ½'), `"1 kg onions" adds to the onion line (${await qtyOf('onion')})`);
+  ok(await page.locator('.shop-sec', { hasText: 'Other' }).locator('.shop-name', { hasText: 'bagged lettuce' }).count() === 1, 'unknown items go under Other');
+
+  // check off
+  await row('eggs').locator('.tick').check();
+  await page.waitForSelector('.shop-done .shop-name:has-text("eggs")');
+  ok(await until(() => listJson().checked.includes('eggs'), 'checked'), 'checking an item saves to Drive');
+  ok(/^1 of \d+$/.test(await page.textContent('#shop-count')), 'count shows what is checked');
+
+  // change made on another device shows up
+  const remote = listJson();
+  remote.items.push({ id: 'phone1', name: 'bread', n: null, unit: '' });
+  listFile().content = Buffer.from(JSON.stringify(remote));
+  await sync();
+  ok(await until(() => page.isVisible('.shop-name:has-text("bread")'), 'bread'), 'an item added on another device shows up');
+
+  // offline-style merge: a local tick and a remote change both survive
+  const remote2 = listJson();
+  remote2.items.push({ id: 'phone2', name: 'cucumber', n: null, unit: '' });
+  listFile().content = Buffer.from(JSON.stringify(remote2));
+  await row('bread').locator('.tick').check();
+  ok(await until(() => listJson().checked.includes('bread') && listJson().items.some((i) => i.name === 'cucumber'), 'merge'), 'a tick here and a change elsewhere are both kept');
+
+  // by recipe: remove a whole recipe, then undo
+  await page.click('.seg [data-view="recipe"]');
+  await page.waitForSelector('.shop-recipe-head');
+  ok(await page.locator('.shop-recipe-head h2').allTextContents().then((t) => t.includes('Crêpes (from Drive)') && t.includes('Added by you')), 'by recipe shows each recipe and your own items');
+  ok((await page.textContent('.shop-recipe-head:has-text("Lasagna") > span')) === '4 servings', 'recipe shows its servings');
+  await page.click('.shop-recipe-head:has-text("Crêpes") [data-remove-recipe]');
+  ok(await until(() => listJson().recipes.length === 1, 'remove recipe'), 'removing a recipe keeps the others');
+  ok(await row('milk').locator('.ing-qty').textContent() === '350 ml', 'only the lasagna milk is left');
+  await page.click('.toast-btn:has-text("Undo")');
+  ok(await until(() => listJson().recipes.length === 2, 'undo'), 'undo brings the recipe back');
+
+  // remove one line from one recipe
+  await page.locator('.shop-recipe', { hasText: 'Lasagna' }).locator('.shop-row', { hasText: 'carrot' }).locator('[data-more]').click();
+  await page.click('dialog button:has-text("Remove from Lasagna")');
+  ok(await until(() => listJson().recipes.find((r) => r.path.endsWith('lasagna')).removed.includes('carrot'), 'line'), 'removing one ingredient from one recipe');
+
+  // pantry and aisles
+  await page.click('.seg [data-view="aisle"]');
+  await row('olive oil').locator('[data-more]').click();
+  await page.click('dialog button:has-text("Always have this")');
+  ok(await until(() => byName(config, 'pantry.conf')?.content.toString().includes('"olive oil" = {}'), 'pantry'), 'Always have this writes pantry.conf');
+  ok(await until(() => page.locator('.shop-have .shop-name', { hasText: 'olive oil' }).count().then((n) => n === 1), 'have'), 'olive oil moves to Probably have');
+  await row('bagged lettuce').locator('[data-more]').click();
+  await page.click('dialog button:has-text("Choose aisle")');
+  await page.selectOption('#pick', { label: 'Produce' });
+  await page.click('dialog button:has-text("Save")');
+  ok(await until(() => /\[produce\][^[]*\nbagged lettuce\n/.test(byName(config, 'aisle.conf').content.toString()), 'aisle'), 'Choose aisle adds it to aisle.conf');
+  ok(await until(() => page.locator('.shop-sec', { hasText: 'Produce' }).locator('.shop-name', { hasText: 'bagged lettuce' }).count().then((n) => n === 1), 'produce'), 'and the list sorts it there');
+
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  ok(over <= 0, `no sideways scroll on the list on a phone (${over}px)`);
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/list-phone.png`, fullPage: true });
+
+  // clear checked, then clear all
+  await page.click('#clear-checked');
+  ok(await until(() => !listJson().checked.length && !listJson().items.some((i) => i.name === 'bread'), 'clear checked'), 'Clear checked removes what is in the basket');
+  ok(await page.locator('.shop-name', { hasText: /^eggs/ }).count() === 0, 'eggs are gone from both recipes');
+  await page.click('#clear-all');
+  await page.click('dialog button:has-text("Clear list")');
+  ok(await until(() => !listJson().recipes.length && !listJson().items.length, 'clear all'), 'Clear shopping list empties it');
+  await page.waitForSelector('.shop-empty');
+  await ctx.close();
+}
+
+// 8. friends who are not signed in see no shopping list
+{
+  const page = await newPage();
+  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.waitForSelector('.ing-row');
+  ok(!(await page.isVisible('#add-list')) && !(await page.isVisible('.icon-link')), 'no shopping list without signing in');
+  await page.goto(`${BASE}/#/list`);
+  ok(await page.isVisible('text=Sign in to use the shopping list'), 'list page asks to sign in');
+  await page.close();
+}
+
 ok(errors.length === 0, `no page errors ${errors.length ? JSON.stringify(errors.slice(0, 5)) : ''}`);
 await browser.close();
 console.log(failures ? `\n${failures} FAILED` : '\nALL PASSED');

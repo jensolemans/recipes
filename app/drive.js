@@ -7,7 +7,7 @@ const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const SCOPE = 'https://www.googleapis.com/auth/drive';
 const FOLDER = 'application/vnd.google-apps.folder';
-const FILE_FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,parents';
+const FILE_FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,parents,trashed';
 const STORE_KEY = 'recipes.session';
 
 let clientId = '';

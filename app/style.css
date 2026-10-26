@@ -348,6 +348,78 @@ button.timer-chip:hover { background: var(--strong); color: var(--on-strong); }
 .modal p { margin: 0 0 20px; color: var(--muted); }
 .modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 
+.toast { display: flex; align-items: center; gap: 14px; }
+.toast-btn {
+  flex: none; border: 0; background: none; color: inherit; font-weight: 700; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; padding: 4px 2px;
+}
+.modal-field { margin: 0 0 20px; }
+.modal-field select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 12px; }
+
+/* ---------- shopping list ---------- */
+.icon-link {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--ink); text-decoration: none;
+}
+.icon-link:hover { background: var(--soft); }
+.icon-link svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.badge {
+  position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--strong); color: var(--on-strong); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+body[data-view="list"] .icon-link { background: var(--soft); }
+
+.shop { max-width: 720px; margin: 0 auto; }
+.shop-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 18px; }
+.shop-head h1 { margin: 0; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-size: clamp(36px, 6vw, 56px); }
+.shop-status { margin: 0; color: var(--muted); font-size: 14px; }
+.shop-status .link-btn { font-size: inherit; }
+.shop-add { display: flex; gap: 8px; }
+.shop-add input {
+  flex: 1; min-width: 0; min-height: 48px; border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  padding: 0 18px; font-size: 16px; outline: none;
+}
+.shop-add input:focus { border-color: var(--strong); }
+.shop-add .btn { min-height: 48px; }
+.shop-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 6px; }
+.shop-count { color: var(--muted); font-size: 14px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; background: var(--soft); border-radius: 999px; padding: 3px; }
+.seg button {
+  border: 0; background: none; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--muted);
+}
+.seg button[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); }
+
+.shop-sec, .shop-recipe { margin-top: 22px; }
+.shop-sec h2, .shop-have summary, .shop-recipe-head h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 2px; }
+.shop-sec h2 span, .shop-have summary span { font-weight: 400; margin-left: 4px; }
+.shop-have summary { cursor: pointer; padding: 6px 0; }
+.shop-recipe-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.shop-recipe-head h2 { flex: 1; min-width: 0; font-size: 20px; text-transform: none; letter-spacing: -.01em; color: var(--ink); }
+.shop-recipe-head h2 a { text-decoration: none; }
+.shop-recipe-head h2 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.shop-recipe-head > span { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.shop-recipe .muted { margin: 10px 0 0; }
+.shop-list { list-style: none; margin: 0; padding: 0; }
+.shop-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.shop-main {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: auto 92px minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 12px 0; cursor: pointer;
+}
+.shop-main .tick { width: 22px; height: 22px; transform: none; }
+.shop-name { font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.shop-name small { display: block; font-size: 13px; color: var(--muted); }
+.shop-row.is-checked .ing-qty, .shop-row.is-checked .shop-name { opacity: .4; text-decoration: line-through; }
+.shop-row.is-have:not(.is-checked) .ing-qty, .shop-row.is-have:not(.is-checked) .shop-name { color: var(--muted); }
+.more-btn {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+}
+.more-btn:hover { background: var(--soft); color: var(--ink); }
+.more-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.shop-empty { text-align: center; padding: 48px 0 24px; }
+.shop-empty p { margin: 0 0 6px; font-size: 17px; }
+.shop-clear { display: flex; width: 100%; margin-top: 36px; min-height: 52px; font-size: 16px; }
+
 /* ---------- editor ---------- */
 .editor-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .editor-bar h1 { flex: 1; font-size: 26px; letter-spacing: -.02em; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -426,6 +498,9 @@ button.timer-chip:hover { background: var(--strong); color: var(--on-strong); }
   .card-facts { font-size: 13px; gap: 8px; }
   .card-where { display: none; }
   .ing-row { grid-template-columns: auto 78px minmax(0, 1fr); }
+  .shop-main { grid-template-columns: auto 72px minmax(0, 1fr); gap: 10px; }
+  .shop-count { margin-left: 0; }
+  .shop-bar .link-btn { margin-left: auto; }
   .step { grid-template-columns: 30px minmax(0, 1fr); }
   .step p { font-size: 19px; }
   .editor-fields { grid-template-columns: 1fr; }

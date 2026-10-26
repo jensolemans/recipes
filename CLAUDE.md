@@ -21,6 +21,13 @@ folders use the same files.
     respects fixed quantities like `@salt{=1%tsp}`.
   - `drive.js`: Google sign-in (Google Identity Services token flow, scope
     `drive`) and Drive REST calls. Runs in the browser with the user's token.
+  - `shopping.js`: the signed-in shopping list (`#/list`). Stored in Drive as
+    `config/shopping_list.json` (recipes with their scale, own items, checked
+    and removed lines); the list itself is worked out from that with
+    `config/aisle.conf` (store order, spellings) and `config/pantry.conf`
+    ("Probably have"). Changes queue in localStorage and replay on top of the
+    newest Drive version, so offline ticks and two devices both work. The list
+    page checks Drive every 15 s and when the tab comes back.
   - `fonts/`: self-hosted Bricolage Grotesque (UI, headings) and Newsreader
     (method text, descriptions).
 - `scripts/build.py RECIPES APP OUT`: copies `app/` to OUT and writes
