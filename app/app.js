@@ -56,7 +56,7 @@ const S = {
   drive: null, // { folders: Map, files: Map }
   filters: { chapter: '', sub: '', q: '', course: new Set(), cuisine: new Set(), diet: new Set(), difficulty: new Set(), time: new Set(), tags: new Set() },
   sort: saved.get('sort', 'name'),
-  showFilters: false,
+  browse: { at: '', tab: 'folders' }, // phone browse sheet: folder being shown, open tab
   dirty: false,
   ignoreHash: false,
   currentHash: '',
@@ -454,20 +454,6 @@ function matches(e, f, skip) {
   return true;
 }
 
-function chapters() {
-  const tops = new Set(S.folders.map((f) => f.split('/')[0]));
-  for (const e of S.recipes.values()) if (e.chapter) tops.add(e.chapter);
-  return [...tops].sort(collator.compare);
-}
-
-function subFolders(chapter) {
-  const subs = new Set();
-  for (const e of S.recipes.values()) {
-    if (e.chapter === chapter && e.sub) subs.add(e.sub.split('/')[0]);
-  }
-  return [...subs].sort(collator.compare);
-}
-
 function showHome() {
   document.body.dataset.view = 'home';
   const title = S.config.title || 'Recipes';
@@ -483,7 +469,7 @@ function showHome() {
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
           <input id="q" type="search" placeholder="Search recipes or ingredients" autocomplete="off" value="${esc(S.filters.q)}">
         </label>
-        <button class="btn btn-quiet" id="toggle-filters" aria-expanded="${S.showFilters}" aria-controls="filters">Filters</button>
+        <button class="place" id="place" aria-haspopup="dialog"></button>
         <label class="sort">
           <span class="sr">Sort</span>
           <select id="sort">
@@ -493,20 +479,15 @@ function showHome() {
           </select>
         </label>
       </div>
-      <nav class="chapters" id="chapters" aria-label="Categories"></nav>
-      <nav class="subs" id="subs" aria-label="Subcategories"></nav>
-      <div class="filters" id="filters" ${S.showFilters ? '' : 'hidden'}></div>
       <div class="active" id="active"></div>
       <div class="grid" id="grid"></div>
+      <dialog class="sheet" id="browse" aria-label="Browse recipes"></dialog>
     </section>`;
   $('#sort').value = S.sort;
+  $('#place').onclick = openBrowse;
+  $('#browse').onclick = (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); };
   $('#q').addEventListener('input', debounce((ev) => { S.filters.q = ev.target.value; updateHome(); }, 120));
   $('#sort').onchange = (ev) => { S.sort = ev.target.value; saved.set('sort', S.sort); updateHome(); };
-  $('#toggle-filters').onclick = () => {
-    S.showFilters = !S.showFilters;
-    $('#filters').hidden = !S.showFilters;
-    $('#toggle-filters').setAttribute('aria-expanded', S.showFilters);
-  };
   updateHome();
 }
 
@@ -514,26 +495,38 @@ function updateHome() {
   const f = S.filters;
   const all = [...S.recipes.values()];
 
-  // chapters
-  const chs = chapters();
-  const countIn = (ch) => all.filter((e) => matches(e, { ...f, chapter: ch, sub: '' })).length;
-  $('#chapters').innerHTML = [
-    `<button class="chapter" aria-pressed="${!f.chapter}" data-ch="">All <span>${countIn('')}</span></button>`,
-    ...chs.map((ch) => `<button class="chapter" aria-pressed="${f.chapter === ch}" data-ch="${esc(ch)}">${esc(chapterLabel(ch))} <span>${countIn(ch)}</span></button>`),
-  ].join('');
-  $$('#chapters .chapter').forEach((b) => {
-    b.onclick = () => { f.chapter = b.dataset.ch; f.sub = ''; updateHome(); };
-  });
+  // active filter chips
+  const active = FACETS.flatMap(([key]) => [...f[key]].map((v) => [key, v]));
+  $('#active').innerHTML = active.length ? active.map(([key, v]) => `<button class="pill" data-key="${key}" data-val="${esc(v)}" aria-label="Remove filter ${esc(v)}">${esc(cap(v))}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`).join('') + '<button class="link-btn" id="clear">Clear filters</button>' : '';
+  $$('#active .pill').forEach((b) => { b.onclick = () => { f[b.dataset.key].delete(b.dataset.val); updateHome(); }; });
+  if (active.length) $('#clear').onclick = clearFilters;
+  const nActive = active.length;
 
-  const subs = f.chapter ? subFolders(f.chapter) : [];
-  $('#subs').innerHTML = subs.length ? [
-    `<button class="sub" aria-pressed="${!f.sub}" data-sub="">All ${esc(chapterLabel(f.chapter).toLowerCase())}</button>`,
-    ...subs.map((s) => `<button class="sub" aria-pressed="${f.sub === s}" data-sub="${esc(s)}">${esc(chapterLabel(s))}</button>`),
-  ].join('') : '';
-  $$('#subs .sub').forEach((b) => { b.onclick = () => { f.sub = b.dataset.sub; updateHome(); }; });
+  // grid
+  let list = all.filter((e) => matches(e, f));
+  const byName = (a, b) => collator.compare(a.title, b.title);
+  if (S.sort === 'time') list.sort((a, b) => (a.time ?? 1e9) - (b.time ?? 1e9) || byName(a, b));
+  else if (S.sort === 'recent') list.sort((a, b) => (b.modified || 0) - (a.modified || 0) || byName(a, b));
+  else list.sort(byName);
 
-  // facets
-  $('#filters').innerHTML = FACETS.map(([key, label]) => {
+  $('#count').textContent = list.length === all.length ? `${all.length} recipes` : `${list.length} of ${all.length} recipes`;
+  $('#grid').innerHTML = list.length ? list.map(card).join('') : `
+    <div class="empty"><p>No recipes match.</p><button class="btn btn-quiet" id="clear2">Clear search and filters</button></div>`;
+  if (!list.length) $('#clear2').onclick = clearFilters;
+
+  // where you are, on the button that opens the folder and filter panel
+  const sel = selectedFolder();
+  const crumbs = sel ? sel.split('/').map(chapterLabel) : ['All recipes'];
+  $('#place').innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>
+    <span class="place-path"><b>${esc(crumbs.at(-1))}</b>${crumbs.length > 1 ? ` <span class="muted">in ${esc(crumbs.slice(0, -1).join(' / '))}</span>` : ''}</span>
+    <span class="place-n">${list.length}</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>`;
+  $('#place').setAttribute('aria-label', `Browse folders and filters. Showing ${crumbs.join(', ')}, ${list.length} recipes${nActive ? `, ${nActive} filters on` : ''}`);
+  renderBrowse(list.length);
+}
+
+function facetsHTML(all) {
+  const f = S.filters;
+  return FACETS.map(([key, label]) => {
     const counts = new Map();
     for (const e of all) {
       if (!matches(e, f, key)) continue;
@@ -549,34 +542,120 @@ function updateHome() {
     return `<fieldset class="facet facet-${key}"><legend>${label}</legend><div class="facet-opts">${vals.map((v) => `
       <button class="opt" data-key="${key}" data-val="${esc(v)}" aria-pressed="${f[key].has(v)}">${esc(cap(v))} <span>${counts.get(v)}</span></button>`).join('')}</div></fieldset>`;
   }).join('');
-  $$('#filters .opt').forEach((b) => {
+}
+
+function bindFacets(el) {
+  $$('.opt', el).forEach((b) => {
     b.onclick = () => {
-      const set = f[b.dataset.key];
+      const set = S.filters[b.dataset.key];
       set.has(b.dataset.val) ? set.delete(b.dataset.val) : set.add(b.dataset.val);
       updateHome();
     };
   });
-
-  // active filter chips
-  const active = FACETS.flatMap(([key]) => [...f[key]].map((v) => [key, v]));
-  $('#active').innerHTML = active.length ? active.map(([key, v]) => `<button class="pill" data-key="${key}" data-val="${esc(v)}" aria-label="Remove filter ${esc(v)}">${esc(cap(v))}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>`).join('') + '<button class="link-btn" id="clear">Clear filters</button>' : '';
-  $$('#active .pill').forEach((b) => { b.onclick = () => { f[b.dataset.key].delete(b.dataset.val); updateHome(); }; });
-  if (active.length) $('#clear').onclick = clearFilters;
-  const nActive = active.length;
-  $('#toggle-filters').textContent = nActive ? `Filters (${nActive})` : 'Filters';
-
-  // grid
-  let list = all.filter((e) => matches(e, f));
-  const byName = (a, b) => collator.compare(a.title, b.title);
-  if (S.sort === 'time') list.sort((a, b) => (a.time ?? 1e9) - (b.time ?? 1e9) || byName(a, b));
-  else if (S.sort === 'recent') list.sort((a, b) => (b.modified || 0) - (a.modified || 0) || byName(a, b));
-  else list.sort(byName);
-
-  $('#count').textContent = list.length === all.length ? `${all.length} recipes` : `${list.length} of ${all.length} recipes`;
-  $('#grid').innerHTML = list.length ? list.map(card).join('') : `
-    <div class="empty"><p>No recipes match.</p><button class="btn btn-quiet" id="clear2">Clear search and filters</button></div>`;
-  if (!list.length) $('#clear2').onclick = clearFilters;
 }
+
+// ---- folder panel: the Drive folders with a path back up, and the filters
+
+const selectedFolder = () => [S.filters.chapter, S.filters.sub].filter(Boolean).join('/');
+const inFolder = (e, p) => !p || e.folder === p || e.folder.startsWith(p + '/');
+
+function selectFolder(p) {
+  const [chapter = '', ...rest] = p ? p.split('/') : [];
+  S.filters.chapter = chapter;
+  S.filters.sub = rest.join('/');
+}
+
+/** Folders directly inside `at` that hold recipes somewhere below them. */
+function childFolders(at) {
+  const depth = at ? at.split('/').length : 0;
+  const kids = new Set();
+  for (const e of S.recipes.values()) {
+    if (!e.folder || !inFolder(e, at)) continue;
+    const parts = e.folder.split('/');
+    if (parts.length > depth) kids.add(parts.slice(0, depth + 1).join('/'));
+  }
+  return [...kids].filter((p) => !SKIP_TOP.test(p)).sort(collator.compare);
+}
+
+/** Opens the folder and filter panel where you are: a bottom sheet with two tabs on phones, one wide panel on bigger screens. */
+function openBrowse() {
+  const sel = selectedFolder();
+  // phones show one level, so open on the current folder's level; wide screens show two, so one higher
+  const up = (childFolders(sel).length ? 0 : 1) + (wideBrowse.matches ? 1 : 0);
+  S.browse = { at: sel.split('/').slice(0, Math.max(0, sel.split('/').length - up)).join('/'), tab: 'folders' };
+  $('#browse').showModal();
+  updateHome();
+}
+
+function renderBrowse(shown) {
+  const dlg = $('#browse');
+  if (!dlg?.open) return;
+  const f = S.filters;
+  const b = S.browse;
+  const all = [...S.recipes.values()];
+  const pool = all.filter((e) => matches(e, { ...f, chapter: '', sub: '' }));
+  const count = (p) => pool.filter((e) => inFolder(e, p)).length;
+  const sel = selectedFolder();
+  const nFilters = FACETS.reduce((n, [key]) => n + f[key].size, 0);
+  const label = (p) => (p ? chapterLabel(p.split('/').pop()) : 'All recipes');
+  const chev = '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 5 5-5 5"/></svg>';
+  const wide = wideBrowse.matches; // room for two levels of folders and the filters side by side, no tabs
+  const showFolders = wide || b.tab === 'folders';
+  const showFilters = wide || b.tab === 'filters';
+  const allLabel = b.at ? `All ${label(b.at).toLowerCase()}` : 'All recipes';
+  // a folder with subfolders opens, any other one is picked; "All ..." picks the folder you're in
+  const go = (p, kids) => (kids ? `data-open="${esc(p)}"` : `data-pick="${esc(p)}"`);
+  const cls = (base, p) => `${base}${p === sel ? ' is-here' : ''}${count(p) ? '' : ' is-empty'}`;
+  let folders;
+  if (wide) {
+    // two levels at once: every folder with all its subfolders, the panel scrolls when they don't fit
+    folders = `<button class="${cls('tree-all', b.at)}" data-pick="${esc(b.at)}">${esc(allLabel)} <span>${count(b.at)}</span></button>
+      <div class="tree">${childFolders(b.at).map((p) => `<div class="tree-group">
+          <button class="${cls('tree-head', p)}" data-pick="${esc(p)}">${esc(label(p))} <span>${count(p)}</span></button>
+          ${childFolders(p).map((k) => `<button class="${cls('tree-leaf', k)}${sel.startsWith(k + '/') ? ' is-in' : ''}" ${go(k, childFolders(k).length)}>${esc(label(k))}${childFolders(k).length ? chev : ''}</button>`).join('')}
+        </div>`).join('')}</div>`;
+  } else {
+    const row = (p, name, kids) => `<button class="${cls('frow', p)}${kids && sel.startsWith(p + '/') ? ' is-in' : ''}" ${go(p, kids)}>
+      <span class="frow-name">${esc(name)}</span><span class="frow-n">${count(p)}</span>${kids ? chev : ''}</button>`;
+    folders = row(b.at, allLabel, 0) + childFolders(b.at).map((p) => row(p, label(p), childFolders(p).length)).join('');
+  }
+  // the path is the way back: every folder above this one is a button
+  const ups = b.at ? ['', ...b.at.split('/').slice(0, -1).map((_, i, a) => a.slice(0, i + 1).join('/'))] : [];
+  const title = showFolders
+    ? `${ups.map((p) => `<button class="crumb" data-up="${esc(p)}">${esc(label(p))}</button> <span class="crumb-sep">/</span> `).join('')}<span class="crumb-here">${esc(label(b.at))}</span>`
+    : 'Filters';
+  const filters = `<div class="sheet-facets">${wide ? '<h3>Filters</h3>' : ''}${facetsHTML(all)}</div>`;
+  const scrolls = $$('.sheet-body', dlg).map((el) => el.scrollTop);
+  dlg.innerHTML = `
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 class="sheet-path">${title}</h2>
+      <button class="sheet-x" id="b-close" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+    </div>
+    ${wide ? `<div class="sheet-cols"><div class="sheet-body sheet-folders">${folders}</div><div class="sheet-body sheet-side">${filters}</div></div>` : `
+    <div class="seg" role="tablist">
+      <button role="tab" data-tab="folders" aria-selected="${b.tab === 'folders'}">Folders</button>
+      <button role="tab" data-tab="filters" aria-selected="${b.tab === 'filters'}">Filters${nFilters ? ` (${nFilters})` : ''}</button>
+    </div>
+    <div class="sheet-body">${showFolders ? folders : filters}</div>`}
+    ${showFilters ? `<div class="sheet-foot">
+      <button class="link-btn" id="b-clear">Clear filters</button>
+      <button class="btn btn-primary" id="b-show">Show ${shown} recipe${shown === 1 ? '' : 's'}</button>
+    </div>` : ''}`;
+  $$('.sheet-body', dlg).forEach((el, i) => { el.scrollTop = scrolls[i] || 0; });
+  bindFacets(dlg);
+  const goTo = (p) => { b.at = p; $('.sheet-body', dlg).scrollTop = 0; updateHome(); };
+  $('#b-close', dlg).onclick = () => dlg.close();
+  $$('[data-up]', dlg).forEach((c) => { c.onclick = () => goTo(c.dataset.up); });
+  $$('[data-tab]', dlg).forEach((t) => { t.onclick = () => { b.tab = t.dataset.tab; updateHome(); }; });
+  $$('[data-open]', dlg).forEach((r) => { r.onclick = () => goTo(r.dataset.open); });
+  $$('[data-pick]', dlg).forEach((r) => { r.onclick = () => { selectFolder(r.dataset.pick); dlg.close(); updateHome(); window.scrollTo(0, 0); }; });
+  if ($('#b-show', dlg)) $('#b-show', dlg).onclick = () => dlg.close();
+  if ($('#b-clear', dlg)) $('#b-clear', dlg).onclick = () => { for (const [key] of FACETS) f[key].clear(); updateHome(); };
+}
+
+const wideBrowse = matchMedia('(min-width: 701px)');
+wideBrowse.addEventListener('change', () => { if ($('#browse')?.open) updateHome(); });
 
 function clearFilters() {
   const f = S.filters;

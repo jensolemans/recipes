@@ -88,7 +88,7 @@ Open the site and click **Sign in** (top right). Google shows "Google hasn't ver
 
 - **Sign-in lasts an hour**, also after closing the tab. When it runs out, tap **Renew sign-in** at the top (or just **Save**): Google's window flashes and closes, and you stay on the page with your changes. Google gives browser-only sites one-hour sign-ins; staying signed in longer would need a small server.
 - **Photos** you add on the site are resized to 1600 px and saved as `<file name>.jpg` next to the recipe in Drive.
-- **Categories** are your Drive folders: top-level folders are the tabs, subfolders the chips below them. To add a category, create the folder in Drive and reload the site while signed in. Folders named `config` or `tools`, and anything starting with a dot, are hidden.
+- **Categories** are your Drive folders: browse them with the folder button next to search, which opens a panel with the folders, a path back up and the filters. To add a category, create the folder in Drive and reload the site while signed in. Folders named `config` or `tools`, and anything starting with a dot, are hidden.
 - **Moving or renaming a recipe**: on the site, the photo moves along. In Drive or the Cooklang app, move or rename the photo yourself (same file name next to the `.cook` file). Either way, other recipes that link to it with `@./path/to/recipe{}` need their link fixed, and old shared web addresses stop working, because both follow the file's path.
 - **Light and dark**: the button next to **Sign in** switches between Auto (follows the device), Light and Dark, remembered per device.
 - **Scaling** uses the official Cooklang rules: amounts marked fixed, like `@salt{=1%tsp}`, never change. Units stay as you wrote them.

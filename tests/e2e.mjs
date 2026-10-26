@@ -179,13 +179,28 @@ const newPage = async (opts = {}) => {
   ok(titles.includes('Crêpes'), `search "crepe" finds Crêpes (${titles.join(', ')})`);
   await page.fill('#q', '');
   await page.waitForTimeout(300);
-  await page.click('.chapter[data-ch="1 Breakfast"]');
-  ok((await page.$$('.card')).length === 5, 'Breakfast chapter shows 5');
-  await page.click('.chapter[data-ch=""]');
-  await page.click('#toggle-filters');
-  await page.click('.opt[data-key="diet"][data-val="vegan"]');
+  await page.click('#place');
+  await page.click('#browse [data-pick="1 Breakfast"]');
+  ok((await page.$$('.card')).length === 5, 'Breakfast folder shows 5');
+  ok(!(await page.$eval('#browse', (d) => d.open)), 'picking a folder closes the panel');
+  ok((await page.textContent('#place')).includes('Breakfast'), 'the folder button says where you are');
+  await page.click('#place');
+  await page.click('#browse [data-pick="3 Mains/Pasta"]');
+  const where = await page.$$eval('.card-where', (els) => [...new Set(els.map((e) => e.textContent))]);
+  ok(where.length === 1 && where[0] === 'Mains / Pasta', `picking Pasta under Mains shows only pasta (${where.join(', ')})`);
+  await page.click('#place');
+  ok(await page.$eval('#browse [data-pick="3 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'the panel opens with the current folder marked');
+  const hasRecipes = (d) => fs.readdirSync(d, { withFileTypes: true }).some((x) => (x.isDirectory() ? hasRecipes(path.join(d, x.name)) : x.name.endsWith('.cook')));
+  const mainsSubs = fs.readdirSync(path.join(RECIPES, '3 Mains'), { withFileTypes: true }).filter((x) => x.isDirectory() && hasRecipes(path.join(RECIPES, '3 Mains', x.name))).length;
+  const subs = await page.$$eval('#browse .tree-leaf[data-pick^="3 Mains/"]', (els) => els.length);
+  ok(subs === mainsSubs, `on desktop every subfolder of Mains is listed (${subs} of ${mainsSubs})`);
+  await page.click('#browse [data-pick=""]');
+  const total = (await page.$$('.card')).length;
+  await page.click('#place');
+  await page.click('#browse .opt[data-key="diet"][data-val="vegan"]');
+  await page.click('#b-show');
   const n = (await page.$$('.card')).length;
-  ok(n > 0 && n < 155, `vegan filter narrows the list (${n})`);
+  ok(n > 0 && n < total, `vegan filter narrows the list (${n})`);
   await page.close();
 }
 
@@ -198,6 +213,18 @@ const newPage = async (opts = {}) => {
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     ok(over <= 0, `no sideways scroll on phone for ${h} (${over}px)`);
   }
+  await page.goto(`${BASE}/#/`);
+  await page.click('#place');
+  ok(await page.$eval('#browse', (d) => !d.querySelector('.opt') && Boolean(d.querySelector('[data-tab="filters"]'))), 'on a phone the panel opens on the folders tab');
+  await page.click('#browse [data-open="3 Mains"]');
+  ok((await page.textContent('#browse h2')).replace(/\s+/g, ' ').trim() === 'All recipes / Mains', 'a folder with subfolders opens, with the path on top');
+  await page.click('#browse [data-pick="3 Mains/Pasta"]');
+  await page.click('#place');
+  ok(await page.$eval('#browse [data-pick="3 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'reopening shows the level you are on');
+  await page.click('#browse [data-up=""]');
+  ok(Boolean(await page.$('#browse [data-open="3 Mains"]')), 'tapping All recipes in the path goes back up');
+  await page.click('#browse [data-tab="filters"]');
+  ok(Boolean(await page.$('#browse .opt')) && Boolean(await page.$('#b-show')), 'and the filters tab has the filters');
   await page.close();
 }
 

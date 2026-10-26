@@ -12,7 +12,11 @@ folders use the same files.
 - `app/` is the whole website: plain HTML, CSS and ES modules, no build step,
   no framework, no npm dependencies at runtime.
   - `app.js`: routing (`#/`, `#/r/<path>`, `#/edit/<path>`, `#/new`), home with
-    category tabs, search and filters, recipe view with scaling and timers,
+    search and a folder button that says where you are and opens one panel
+    with the Drive folders (a path on top to go back up; one level at a time
+    on phones, each folder with its subfolders on bigger screens) and the filters:
+    a bottom sheet with two tabs on phones, a wide panel with both side by
+    side on bigger screens, recipe view with scaling and timers,
     editor.
   - `cooklang.js`: loads the official Cooklang WASM parser from
     `app/vendor/cooklang/` (@cooklang/cooklang 0.19.1) and formats quantities.
@@ -87,7 +91,7 @@ folders use the same files.
   (UI copy, docs, commit messages).
 - Design: minimal and neutral, white and black (#FAFAFA / #0E0E0E pages).
   The Cooklang orange (#E77B54) is used sparingly, only where an accent helps:
-  the full-height ingredient highlighter in method steps, the selected category, focus
+  the full-height ingredient highlighter in method steps, the current folder in the folder panel, focus
   rings and a finished timer. Buttons and selected chips are black (white in
   dark). Keep it that way unless asked; colours are CSS variables in
   `app/style.css`. The top bar toggle cycles Auto, Light and Dark, saved per
