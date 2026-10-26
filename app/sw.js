@@ -60,6 +60,14 @@ async function staleWhileRevalidate(req, ev) {
   return net;
 }
 
+// Tapping a finished timer's notification brings the site back.
+self.addEventListener('notificationclick', (ev) => {
+  ev.notification.close();
+  ev.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => (
+    list.length ? list[0].focus() : self.clients.openWindow(self.registration.scope)
+  )));
+});
+
 self.addEventListener('fetch', (ev) => {
   const req = ev.request;
   const url = new URL(req.url);

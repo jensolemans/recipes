@@ -11,11 +11,8 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-  actions: write # lets the keepalive step stop GitHub pausing the hourly run
+# Each job gets only what it needs (below).
+permissions: {}
 
 concurrency:
   group: pages
@@ -24,6 +21,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -62,6 +61,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -74,5 +76,8 @@ jobs:
     # This re-enables the schedule via the API, without making commits.
     if: github.event.schedule == '37 3 * * 1'
     runs-on: ubuntu-latest
+    permissions:
+      actions: write # lets it stop GitHub pausing the hourly run
     steps:
-      - uses: liskin/gh-workflow-keepalive@v1
+      # Pinned to a commit (v1.2.1): a third-party action that can change workflows.
+      - uses: liskin/gh-workflow-keepalive@f72ff1a1336129f29bf0166c0fd0ca6cf1bcb38c

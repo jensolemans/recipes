@@ -281,7 +281,16 @@ export function createSync({ drive, configFolder, onChange }) {
     try { localStorage.setItem(STORE_KEY, JSON.stringify({ base: st.base, md5: st.md5, fileId: st.fileId, pending: st.pending })); } catch { /* private mode */ }
   };
 
-  const current = () => st.pending.reduce(apply, st.base);
+  // The list is read on every render; work it out again only after a change
+  // (a new Drive version, an op added, or ops that reached Drive).
+  let memo = { base: null, n: -1, last: null, list: null };
+  const current = () => {
+    const last = st.pending[st.pending.length - 1] || null;
+    if (memo.base !== st.base || memo.n !== st.pending.length || memo.last !== last) {
+      memo = { base: st.base, n: st.pending.length, last, list: st.pending.reduce(apply, st.base) };
+    }
+    return memo.list;
+  };
 
   async function sync() {
     if (running) { again = true; return; }

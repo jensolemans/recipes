@@ -333,6 +333,8 @@ function findDriveImage(files, path) {
 async function loadDriveImage(e, img) {
   try {
     const url = await drive.readBlobUrl(img.id);
+    // Let go of the photo this one replaces.
+    if (e.imageUrl?.startsWith('blob:')) URL.revokeObjectURL(e.imageUrl);
     e.imageUrl = url; e.thumbUrl = url; e.imageMd5 = img.md5Checksum;
   } catch { /* keep whatever we had */ }
 }
@@ -769,8 +771,10 @@ async function showRecipe(rawPath, params) {
   if (parseHash().path !== `/r/${path}`) return;
 
   const base = baseServings(e);
-  let servings = Number(params.get('s')) || base;
-  let mult = Number(params.get('x')) || 1;
+  // Links can carry anything: only take a sensible amount from them.
+  const fromLink = (v, min, max) => (Number.isFinite(Number(v)) && Number(v) >= min && Number(v) <= max ? Number(v) : null);
+  let servings = fromLink(params.get('s'), 1, 100) ?? base;
+  let mult = fromLink(params.get('x'), 0.25, 10) ?? 1;
 
   const crumbs = [e.chapter, ...e.sub.split('/').filter(Boolean)];
   const canEdit = S.live === 'on' && e.driveId;
@@ -1372,6 +1376,16 @@ function beep() {
   try { navigator.vibrate?.([300, 150, 300, 150, 300]); } catch { /* ignore */ }
 }
 
+// Phones (Android Chrome) only show notifications through the service worker.
+async function notify(title, body) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) await reg.showNotification(title, { body, icon: 'icons/icon-192.png' });
+    else new Notification(title, { body });
+  } catch { /* ignore */ }
+}
+
 function renderTimers() {
   const el = $('#timers');
   const now = Date.now();
@@ -1379,7 +1393,7 @@ function renderTimers() {
     if (!t.done && !t.paused && t.end <= now) {
       t.done = true;
       beep();
-      try { if (document.hidden && Notification.permission === 'granted') new Notification('Timer done', { body: `${t.label} for ${t.recipeTitle}` }); } catch { /* ignore */ }
+      if (document.hidden) notify('Timer done', `${t.label} for ${t.recipeTitle}`);
     }
   }
   el.innerHTML = timers.map((t) => {
@@ -1540,7 +1554,6 @@ async function showEditor(rawPath) {
     folderTouched: !isNew,
     photo: null, // Blob
     photoUrl: isNew ? null : e.imageUrl,
-    removePhoto: false,
     saving: false,
   };
   S.dirty = false;
@@ -1624,9 +1637,9 @@ async function showEditor(rawPath) {
 
   ta.addEventListener('input', () => { markDirty(); debounced(); });
   ta.addEventListener('keydown', (ev) => {
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); }
     if (ev.key === 'Tab' && !ev.shiftKey) { ev.preventDefault(); insert('  ', 2, 2); }
   });
+  // Ctrl+S anywhere in the editor, the recipe text included.
   document.onkeydown = (ev) => {
     if (document.body.dataset.view !== 'editor') return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 's') { ev.preventDefault(); save(); }
@@ -1660,6 +1673,8 @@ async function showEditor(rawPath) {
   async function usePhoto(blob) {
     try {
       st.photo = await resizeImage(blob);
+      // A photo picked earlier in this editor is no longer needed.
+      if (st.photoUrl?.startsWith('blob:') && st.photoUrl !== e?.imageUrl) URL.revokeObjectURL(st.photoUrl);
       st.photoUrl = URL.createObjectURL(st.photo);
       $('#photo-thumb').innerHTML = `<img src="${st.photoUrl}" alt="">`;
       markDirty(); updatePreview();
@@ -1754,8 +1769,17 @@ async function showEditor(rawPath) {
 
   $('#save').onclick = save;
 
+  // One save at a time, also while the sign-in window or a question is open.
   async function save() {
     if (st.saving) return;
+    st.saving = true;
+    try { await saveNow(); } finally {
+      st.saving = false;
+      const b = $('#save'); if (b) b.disabled = false;
+    }
+  }
+
+  async function saveNow() {
     const src = ta.value;
     const fm = readFrontmatter(src);
     const file = (st.file || slugify(fm.title || '')).replace(/[\\/:*?"<>|]+/g, '_').trim();
@@ -1789,7 +1813,6 @@ async function showEditor(rawPath) {
     watchSession();
     renderAccount();
 
-    st.saving = true;
     $('#save').disabled = true;
     $('#save-state').textContent = 'Saving…';
     try {
@@ -1854,9 +1877,6 @@ async function showEditor(rawPath) {
       if (!err.quiet) toast(err.message || 'Saving failed.');
       if (err.code === 401) renderAccount();
       $('#save-state').textContent = S.dirty ? 'Unsaved changes' : '';
-    } finally {
-      st.saving = false;
-      const b = $('#save'); if (b) b.disabled = false;
     }
   }
 }
