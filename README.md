@@ -1,43 +1,77 @@
 # Recipes site
 
-Publishes the Cooklang recipes from the Google Drive folder **Cooklang Recipes** as a read-only website on GitHub Pages.
+A recipe website built on the Cooklang files in the Google Drive folder **Cooklang Recipes**.
 
-Every night the workflow downloads the recipes from Drive, runs `cook build web` and publishes the result. Keep adding and editing recipes in Drive as usual; the site follows by itself.
+- **Friends** browse, search, filter and scale every recipe. No account needed, read only.
+- **You** sign in with Google to add, edit, move, rename and delete recipes and photos. Changes are written straight to the Drive folder, so the Cooklang app and your desktop folders stay in sync.
+- **Free**: GitHub Pages hosting, GitHub Actions for the hourly rebuild, and Google's free APIs.
 
-Want a change online right away? GitHub → this repo → **Actions** → **Publish recipes** → **Run workflow**. This also works from the GitHub mobile app.
+## How it works
 
-Only `.cook`, `.menu`, image files and the `config` folder are downloaded. The zip and the `tools` folder stay private.
+| Who | Sees | Updated |
+|---|---|---|
+| Friends | A snapshot of the Drive folder | Every hour, or right away with **Actions → Publish recipes → Run workflow** |
+| You, signed in | The live Drive folder | Instantly |
 
-## One-time setup (about 15 minutes)
+There is no server. Editing happens in your browser with your own Google sign-in, so only Google accounts that can edit the Drive folder can change anything. Anyone else who signs in stays read only.
 
-### 1. Google: give the workflow read access to the recipe folder
+Deleting moves the recipe and its photo to the Google Drive trash, so you can restore them for 30 days. If a recipe was changed elsewhere (in the Cooklang app, say) while you were editing it, the site warns you before overwriting.
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project, e.g. `recipes-site`.
-2. In that project, open **APIs & Services → Library**, search for **Google Drive API** and click **Enable**.
-3. Open **IAM & Admin → Service Accounts → Create service account**. Name it `recipes-reader`. Skip the optional role and access steps.
-4. Click the new service account → **Keys** → **Add key → Create new key → JSON**. A `.json` file downloads. Treat it like a password.
-5. Copy the service account's email address (looks like `recipes-reader@recipes-site.iam.gserviceaccount.com`).
-6. In Google Drive, right-click **Cooklang Recipes** → **Share**, paste that email, set it to **Viewer**, untick "Notify people", and share.
-7. Open the **Cooklang Recipes** folder in your browser and copy the folder ID from the address bar: the part after `/folders/`.
+## Files
 
-The service account can only see this one folder, read-only.
+```
+app/                     the website (HTML, CSS, JavaScript)
+app/vendor/cooklang/     official Cooklang parser (@cooklang/cooklang 0.19.1, MIT)
+app/fonts/               Bricolage Grotesque and Newsreader (SIL Open Font License)
+scripts/build.py         turns the Drive download into the site's data and photos
+scripts/dev.py           local preview at http://localhost:8000 from your synced Drive folder
+tests/e2e.mjs            browser tests, run against a fake Google Drive
+CLAUDE.md                project notes for Claude Code
+.claude/launch.json      lets the Claude desktop app start the preview
+.github/workflows/publish.yml   hourly download, build and publish
+```
 
-### 2. GitHub: create the repo
+## One-time setup
 
-1. Create a new **public** repository, e.g. `recipes` (free GitHub Pages needs a public repo; the recipes themselves are not stored in it).
-2. **Add file → Create new file**, name it `.github/workflows/publish.yml`, paste the contents of `publish.yml` and commit. Do the same for this README if you like.
-3. **Settings → Secrets and variables → Actions**:
-   - **Secrets** tab → **New repository secret**: name `GDRIVE_SERVICE_ACCOUNT`, value: the entire contents of the downloaded `.json` file.
-   - **Variables** tab → **New repository variable**: name `GDRIVE_FOLDER_ID`, value: the folder ID from step 1.7.
-4. **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-5. **Actions → Publish recipes → Run workflow**. After 1 to 2 minutes the site is live at `https://<your-username>.github.io/recipes/`.
+The build already has read access to Drive through the `GDRIVE_SERVICE_ACCOUNT` secret and the `GDRIVE_FOLDER_ID` variable. Editing needs one more thing: a Google sign-in client for the website.
 
-Share that link with your friends. Delete the downloaded `.json` file from your computer once the secret is saved.
+### 1. Create the Google sign-in client
+
+In [console.cloud.google.com](https://console.cloud.google.com), open the same project you made for the service account.
+
+1. Go to **APIs & Services → OAuth consent screen** (it may be called **Google Auth Platform**) and click **Get started**.
+   - App name: `Recipes`. User support email: your Gmail.
+   - Audience: **External**.
+   - Contact email: your Gmail. Agree and click **Create**.
+2. Open **Audience**. Under **Test users**, click **Add users** and add your own Gmail address. Leave the app in **Testing**: that keeps it private to you, and no Google review is needed.
+3. Open **Data access** → **Add or remove scopes**, tick `.../auth/drive` (See, edit, create and delete all of your Google Drive files) and click **Update**, then **Save**.
+4. Open **Clients** → **Create client**:
+   - Application type: **Web application**. Name: `Recipes site`.
+   - **Authorized JavaScript origins** → **Add URI**: `https://jensolemans.github.io`
+   - Click **Create** and copy the **Client ID** (ends in `.apps.googleusercontent.com`). It is not a secret.
+
+### 2. Add it to GitHub
+
+In the repo: **Settings → Secrets and variables → Actions → Variables** tab:
+
+| Name | Value |
+|---|---|
+| `GOOGLE_CLIENT_ID` | the Client ID from step 1.4 |
+| `SITE_TITLE` | the name shown at the top, e.g. `Jens's Recipes` (optional) |
+
+For signing in on the local preview too, add `http://localhost:8000` as a second **Authorized JavaScript origin** in step 1.4, and put the Client ID and folder ID in `local.json`.
+
+Then **Actions → Publish recipes → Run workflow**.
+
+### 3. First sign-in
+
+Open the site and click **Sign in** (top right). Google shows "Google hasn't verified this app": that is expected for your own app in Testing. Click **Continue**, allow access to Google Drive, and you are in. Next time it is one click.
 
 ## Good to know
 
-- **Cost:** free. GitHub Actions minutes are unlimited for public repos, and the site (about 35 MB) is far below the 1 GB Pages limit.
-- **The site is public:** anyone with the link can view it. It is not listed anywhere, but search engines may find it eventually.
-- **Not on the site:** recipe scaling, shopping list and pantry. Those still work in the Cooklang app on your phone.
-- **Nightly run paused?** GitHub pauses scheduled runs in repos without commits for 60 days. The `keepalive` job re-enables it every night, so this should not happen. If it does, GitHub sends an email and one click on **Enable workflow** fixes it.
-- **A run failed?** GitHub emails you. The most common cause is a changed folder share or a deleted service account key.
+- **Sign-in lasts an hour** and ends when you close the tab. Click **Sign in** again when it asks.
+- **Photos** you add on the site are resized to 1600 px and saved as `<file name>.jpg` next to the recipe in Drive.
+- **Categories** are your Drive folders. To add a category, create the folder in Drive and reload the site while signed in.
+- **Scaling** uses the official Cooklang rules: amounts marked fixed, like `@salt{=1%tsp}`, never change. Units stay as you wrote them.
+- **Local preview**: `python scripts/dev.py`, then open http://localhost:8000. The first run creates `local.json`; check that `recipesDir` points to your synced recipe folder.
+- **Tests**: see `tests/README.md`.

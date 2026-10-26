@@ -1,11 +1,12 @@
 name: Publish recipes
 
-# Pulls the Cooklang recipes from Google Drive, builds a static site with
-# `cook build web` and publishes it to GitHub Pages.
+# Downloads the Cooklang recipes from Google Drive, builds the recipe site
+# (app/ + data) and publishes it to GitHub Pages.
 
 on:
   schedule:
-    - cron: "17 3 * * *" # every night around 04:17 Belgian time
+    - cron: "7 * * * *" # every hour
+    - cron: "37 3 * * 1" # weekly, also keeps the schedule alive
   workflow_dispatch: # "Run workflow" button for an instant update
   push:
     branches: [main]
@@ -14,7 +15,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  actions: write # lets the keepalive step stop GitHub pausing the nightly run
+  actions: write # lets the keepalive step stop GitHub pausing the hourly run
 
 concurrency:
   group: pages
@@ -24,10 +25,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Install rclone
+      - uses: actions/checkout@v5
+
+      - name: Install rclone and Pillow
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq rclone
+          pip install --quiet pillow
 
       - name: Download recipes from Google Drive
         env:
@@ -37,24 +41,17 @@ jobs:
           RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
         run: |
           rclone copy gdrive: recipes \
-            --include "*.cook" --include "*.menu" \
-            --include "*.jpg" --include "*.jpeg" --include "*.png" --include "*.webp" \
-            --include "config/**" \
+            --include "*.cook" \
+            --include "*.{jpg,jpeg,png,webp,JPG,JPEG,PNG}" \
             --transfers 16
           echo "Downloaded $(find recipes -name '*.cook' | wc -l) recipes"
-          test "$(find recipes -name '*.cook' | wc -l)" -gt 0
-
-      - name: Install CookCLI
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release download --repo cooklang/cookcli \
-            --pattern 'cook-*-linux-x86_64-musl.tar.gz' --output cook.tar.gz
-          tar xzf cook.tar.gz
-          ./cook --version
 
       - name: Build site
-        run: ./cook build web site --base-path recipes --lang en-US
+        env:
+          SITE_TITLE: ${{ vars.SITE_TITLE }}
+          GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+          GDRIVE_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
+        run: python3 scripts/build.py recipes app site
 
       - uses: actions/configure-pages@v6
 
@@ -75,7 +72,7 @@ jobs:
   keepalive:
     # GitHub pauses scheduled workflows in repos with no commits for 60 days.
     # This re-enables the schedule via the API, without making commits.
-    if: github.event_name == 'schedule'
+    if: github.event.schedule == '37 3 * * 1'
     runs-on: ubuntu-latest
     steps:
       - uses: liskin/gh-workflow-keepalive@v1

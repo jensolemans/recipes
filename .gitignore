@@ -1,0 +1,7 @@
+# local preview
+.dev/
+local.json
+site/
+recipes/
+__pycache__/
+node_modules/

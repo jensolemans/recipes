@@ -1,0 +1,55 @@
+{
+  "name": "@cooklang/cooklang",
+  "version": "0.19.1",
+  "license": "MIT",
+  "description": "Official Cooklang parser - Rust-powered WASM implementation for high performance recipe parsing",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cooklang/cooklang-rs.git",
+    "directory": "typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/cooklang/cooklang-rs/issues"
+  },
+  "homepage": "https://cooklang.org",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "pkg-types.d.ts",
+    "fix-wasm-start.cjs",
+    "pkg/cooklang_wasm_bg.wasm",
+    "pkg/cooklang_wasm_bg.wasm.d.ts",
+    "pkg/cooklang_wasm_bg.js",
+    "pkg/cooklang_wasm.d.ts",
+    "pkg/cooklang_wasm.js",
+    "README.md",
+    "MIGRATION.md"
+  ],
+  "keywords": [
+    "cooklang",
+    "parser",
+    "recipe",
+    "cooking",
+    "markup",
+    "wasm",
+    "rust",
+    "typescript",
+    "javascript"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build-wasm": "wasm-pack build --target bundler && node fix-wasm-start.cjs",
+    "watch-wasm": "wasm-pack build --dev --mode no-install --target bundler && node fix-wasm-start.cjs",
+    "prepare": "npm run build-wasm && npm run build",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite-plugin-wasm": "^3.6.0",
+    "vitest": "^5.0.3",
+    "wasm-pack": "^0.15.0"
+  }
+}

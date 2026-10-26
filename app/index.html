@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Recipes</title>
+  <meta name="description" content="A personal recipe collection.">
+  <meta name="theme-color" content="#F6F7F3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121915" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preload" href="fonts/bricolage-grotesque-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <link rel="modulepreload" href="app.js">
+  <link rel="preload" href="data/recipes.json" as="fetch" crossorigin>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <a class="brand" href="#/" data-brand>Recipes</a>
+    <div class="account" id="account"></div>
+  </header>
+  <main id="main" tabindex="-1">
+    <p class="loading">Loading recipes…</p>
+  </main>
+  <footer class="foot" id="foot"></footer>
+  <div class="timers" id="timers" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <dialog class="modal" id="modal"></dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Recipe site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["scripts/dev.py"],
+      "port": 8000,
+      // Fixed port: Google sign-in only allows http://localhost:8000
+      "autoPort": false
+    }
+  ]
+}
