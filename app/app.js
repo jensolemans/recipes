@@ -1451,6 +1451,65 @@ function resizeImage(file, max = 1600) {
   });
 }
 
+/**
+ * Takes the recipe out of a pasted Claude reply: the code block that holds
+ * it, or everything from the frontmatter on when there is text before it.
+ * Returns null when the text is not a reply around a recipe.
+ */
+function recipeFromReply(text) {
+  const blocks = [...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const block = blocks.find((b) => /^---\s*$/m.test(b) && /^title\s*:/mi.test(b)) || blocks.find((b) => /@[\p{L}]/u.test(b));
+  if (block) return `${block.replace(/\s+$/, '')}\n`;
+  const at = text.search(/^---\s*$/m);
+  if (at > 0 && /^title\s*:/mi.test(text.slice(at))) return text.slice(at);
+  return null;
+}
+
+// Words in a recipe that point at a folder with another name.
+const FOLDER_WORDS = {
+  bread: 'baking', vegan: 'vegetarian', pescatarian: 'seafood', fish: 'seafood', prawn: 'seafood',
+  shrimp: 'seafood', salmon: 'seafood', chicken: 'poultry', turkey: 'poultry', duck: 'poultry',
+  beef: 'meat', pork: 'meat', lamb: 'meat', noodle: 'pasta', risotto: 'rice', cake: 'cake', cookie: 'cookie',
+};
+const stem = (w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
+
+/**
+ * The best folder for a recipe: the category named after its course, then
+ * the subfolder that matches its title and tags best (or its diet). Null
+ * when the course matches no category.
+ */
+function suggestFolder(fm, folders) {
+  const words = (s) => fold(s).split(/[^a-z0-9]+/).filter(Boolean).map(stem);
+  const both = (ws) => ws.flatMap((w) => [w, FOLDER_WORDS[w]].filter(Boolean));
+  const tags = Array.isArray(fm.tags) ? fm.tags : String(fm.tags || '').split(',');
+  const course = new Set(both(words(fm.course)));
+  const strong = new Set(both([...words(fm.title), ...tags.flatMap(words)]));
+  const weak = new Set(both([...words(fm.diet), ...words(fm.cuisine)]));
+  const label = (f) => words(chapterLabel(f.split('/').pop())).filter((w) => w !== 'and');
+  const top = folders.find((f) => !f.includes('/') && label(f).some((w) => course.has(w)));
+  if (!top) return null;
+  let best = top, bestScore = 0;
+  for (const f of folders.filter((x) => x.startsWith(`${top}/`) && x.split('/').length === 2)) {
+    const score = label(f).reduce((n, w) => n + (course.has(w) ? 3 : strong.has(w) ? 2 : weak.has(w) ? 1 : 0), 0);
+    if (score > bestScore) { best = f; bestScore = score; }
+  }
+  return best;
+}
+
+/** Downloads a photo from its web address. Throws a message that says what to do instead. */
+async function photoFromLink(url) {
+  let res;
+  try {
+    res = await fetch(url, { mode: 'cors' });
+  } catch {
+    throw new Error("That site doesn't let other sites download its photos. Copy the photo and use Paste photo instead.");
+  }
+  if (!res.ok) throw new Error(`That photo could not be downloaded (${res.status}).`);
+  const blob = await res.blob();
+  if (!blob.type.startsWith('image/')) throw new Error("That's a page, not a photo. Right-click or long-press the photo and copy the image address.");
+  return blob;
+}
+
 async function showEditor(rawPath) {
   document.body.dataset.view = 'editor';
   if (!drive.enabled()) { go('#/'); return; }
@@ -1478,6 +1537,7 @@ async function showEditor(rawPath) {
     folder: startFolder,
     file: isNew ? '' : e.file,
     fileTouched: !isNew,
+    folderTouched: !isNew,
     photo: null, // Blob
     photoUrl: isNew ? null : e.imageUrl,
     removePhoto: false,
@@ -1506,6 +1566,8 @@ async function showEditor(rawPath) {
           <div class="photo-row">
             <span class="photo-thumb" id="photo-thumb">${st.photoUrl ? `<img src="${esc(st.photoUrl)}" alt="">` : 'None'}</span>
             <label class="btn btn-quiet btn-sm">Choose photo<input type="file" id="photo" accept="image/*" hidden></label>
+            <button class="btn btn-quiet btn-sm" id="paste-photo" title="Copy a photo on a recipe site first">Paste photo</button>
+            <button class="btn btn-quiet btn-sm" id="photo-link">Photo link</button>
           </div>
         </div>
       </div>
@@ -1515,7 +1577,7 @@ async function showEditor(rawPath) {
       </div>
       <div class="editor-panes" data-tab="write">
         <div class="pane pane-write">
-          <div class="toolbar" aria-label="Insert">${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}">${s.label}</button>`).join('')}</div>
+          <div class="toolbar" aria-label="Insert">${isNew ? '<button class="tool-btn tool-paste" id="paste-recipe" title="Paste a recipe, or Claude\'s whole reply">Paste recipe</button>' : ''}${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}">${s.label}</button>`).join('')}</div>
           <textarea id="src" spellcheck="true" aria-label="Recipe in Cooklang"></textarea>
           <div class="issues" id="issues"></div>
         </div>
@@ -1551,6 +1613,11 @@ async function showEditor(rawPath) {
       st.file = slugify(fm.title || '');
       $('#file').value = st.file;
     }
+    // A new recipe goes where its course says, until a category is picked by hand.
+    if (!st.folderTouched) {
+      const f = suggestFolder(fm, folders);
+      if (f && f !== st.folder) { st.folder = f; $('#folder').value = f; }
+    }
   };
   const debounced = debounce(updatePreview, 200);
   updatePreview();
@@ -1584,21 +1651,85 @@ async function showEditor(rawPath) {
     };
   });
 
-  $('#folder').onchange = (ev) => { st.folder = ev.target.value; markDirty(); };
+  $('#folder').onchange = (ev) => { st.folder = ev.target.value; st.folderTouched = true; markDirty(); };
   $('#file').oninput = (ev) => {
     st.fileTouched = true;
     st.file = ev.target.value.trim().replace(/\.cook$/i, '');
     markDirty();
   };
-  $('#photo').onchange = async (ev) => {
-    const f = ev.target.files?.[0];
-    if (!f) return;
+  async function usePhoto(blob) {
     try {
-      st.photo = await resizeImage(f);
+      st.photo = await resizeImage(blob);
       st.photoUrl = URL.createObjectURL(st.photo);
       $('#photo-thumb').innerHTML = `<img src="${st.photoUrl}" alt="">`;
       markDirty(); updatePreview();
-    } catch (err) { toast(err.message); }
+      return true;
+    } catch (err) { toast(err.message); return false; }
+  }
+  $('#photo').onchange = (ev) => { const f = ev.target.files?.[0]; if (f) usePhoto(f); };
+  $('#paste-photo').onclick = async () => {
+    let items;
+    try { items = await navigator.clipboard.read(); } catch {
+      toast('This browser cannot read photos from the clipboard here. Click in the recipe text and press Ctrl+V instead.');
+      return;
+    }
+    for (const item of items) {
+      const type = item.types.find((t) => t.startsWith('image/'));
+      if (type) { usePhoto(await item.getType(type)); return; }
+    }
+    toast('There is no photo on the clipboard. Right-click or long-press the photo on the recipe site and copy it first.');
+  };
+  $('#photo-link').onclick = async () => {
+    const url = await askText({ title: 'Photo link', body: 'Paste the web address of the photo. Right-click or long-press the photo on the recipe site and copy the image address.', label: 'Photo address', placeholder: 'https://' });
+    if (!url) return;
+    try { if (await usePhoto(await photoFromLink(url))) toast('Photo added.'); } catch (err) { toast(err.message); }
+  };
+
+  // Pasting Claude's whole reply keeps only the recipe. A new recipe that is
+  // still the empty template is replaced, not added to.
+  const isBlank = () => isNew && (!ta.value.trim() || ta.value.trim() === TEMPLATE(author).trim());
+  function takeRecipe(text) {
+    const rec = recipeFromReply(text);
+    const plain = rec == null && isBlank() && /^\s*---/.test(text) ? text : null;
+    if (rec == null && plain == null) return false;
+    if (isBlank()) ta.value = rec ?? plain;
+    else ta.setRangeText(rec, ta.selectionStart, ta.selectionEnd, 'end');
+    markDirty(); updatePreview();
+    if (rec != null && rec.trim() !== text.trim()) toast("Took the recipe out of Claude's reply.");
+    // The recipe may name its photo; try it if there is none yet.
+    const img = readFrontmatter(ta.value).image;
+    if (!st.photo && typeof img === 'string' && /^https?:\/\//.test(img)) {
+      photoFromLink(img).then(usePhoto).catch(() => toast('Recipe pasted. Add the photo with Paste photo or Photo link.'));
+    }
+    return true;
+  }
+  ta.addEventListener('paste', (ev) => {
+    const dt = ev.clipboardData;
+    const text = dt?.getData('text/plain') || '';
+    const img = [...(dt?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (img && !text.trim()) { ev.preventDefault(); usePhoto(img); return; }
+    if (takeRecipe(text)) ev.preventDefault();
+  });
+  // A photo pasted anywhere else in the editor becomes the recipe photo.
+  document.onpaste = (ev) => {
+    if (document.body.dataset.view !== 'editor' || ev.target === ta) return;
+    const img = [...(ev.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (img) { ev.preventDefault(); usePhoto(img); }
+  };
+  const pasteBtn = $('#paste-recipe');
+  if (pasteBtn) pasteBtn.onclick = async () => {
+    let text;
+    try { text = await navigator.clipboard.readText(); } catch {
+      toast('This browser cannot read the clipboard here. Tap in the recipe text and paste it there instead.');
+      return;
+    }
+    if (!isBlank() && !(await ask({
+      title: 'Replace the recipe text?',
+      body: 'What you typed so far is replaced by the pasted recipe.',
+      actions: [{ label: 'Keep mine', value: false }, { label: 'Replace', value: true, danger: true }],
+    }))) return;
+    if (!isBlank()) ta.value = '';
+    if (!takeRecipe(text)) toast('The clipboard has no recipe. Copy Claude\'s reply, or the recipe starting at ---, and try again.');
   };
 
   if (!isNew) {
@@ -1786,6 +1917,28 @@ function chooseParts(title, parts, before) {
       dlg.returnValue = '';
     };
     dlg.showModal();
+  });
+}
+
+/** Asks for one line of text. Resolves with it, or null when cancelled or empty. */
+function askText({ title, body, label, placeholder = '' }) {
+  const dlg = $('#modal');
+  dlg.innerHTML = `<form method="dialog">
+    <h2>${esc(title)}</h2>
+    <p>${esc(body)}</p>
+    <label class="field modal-field"><span>${esc(label)}</span>
+      <input id="ask-text" type="url" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary">Add</button></div>
+  </form>`;
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      const v = $('#ask-text', dlg).value.trim();
+      resolve(dlg.returnValue === 'ok' && v ? v : null);
+      dlg.returnValue = '';
+    };
+    dlg.showModal();
+    $('#ask-text', dlg).focus();
   });
 }
 

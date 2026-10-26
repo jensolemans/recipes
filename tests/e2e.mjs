@@ -16,6 +16,10 @@ const [, , BASE, RECIPES] = process.argv;
 const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
 let failures = 0;
 const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failures++; };
+const until2 = async (page, fn) => {
+  for (let i = 0; i < 50; i++) { try { if (await fn()) return true; } catch { /* not yet */ } await page.waitForTimeout(100); }
+  return false;
+};
 
 // ---------- fake Drive ----------
 const files = new Map(); // id -> {id,name,mimeType,parents,content:Buffer,trashed}
@@ -119,7 +123,7 @@ const errors = [];
 const newPage = async (opts = {}) => {
   const p = await browser.newPage({ viewport: { width: 1280, height: 900 }, ...opts });
   p.on('pageerror', (e) => errors.push(e.message));
-  p.on('console', (msg) => { if (msg.type() === 'error' && !/favicon/.test(msg.text())) errors.push(msg.text()); });
+  p.on('console', (msg) => { if (msg.type() === 'error' && !/favicon/.test(msg.text())) errors.push(`${msg.text()} ${msg.location().url || ''}`.trim()); });
   return p;
 };
 
@@ -620,6 +624,78 @@ const newPage = async (opts = {}) => {
   ok(!(await page.isVisible('#side')) && await page.isVisible('#tabbar'), 'narrower than 1100 px the panel gives way to the tab bar');
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 0, `no sideways scroll at 1000 px (${over}px)`);
+  await ctx.close();
+}
+
+// 11. a new recipe from Claude's reply, with a pasted or linked photo
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] });
+  await ctx.addInitScript(() => {
+    localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
+    localStorage.setItem('recipes.email', 'jens@example.com');
+  });
+  await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', fakeConfig);
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  // One photo site lets other sites download its photos, the other does not.
+  await ctx.route('https://photos.example.test/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: png }));
+  // Playwright answers routed requests without the browser's cross-site check, so
+  // the blocked site is a refused request, which reaches the page the same way.
+  await ctx.route('https://closed.example.test/**', (r) => r.abort('accessdenied'));
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('a[href="#/new"]', { timeout: 15000 });
+  await page.goto(`${BASE}/#/new`);
+  await page.waitForSelector('#src');
+
+  const reply = (title, course, tags) => `Here is the recipe in Cooklang:\n\n\`\`\`cooklang\n---\ntitle: ${title}\ndescription: A test.\ncourse: ${course}\ncuisine: indian\ndiet: meat\ntags: [${tags}]\nservings: 4\n---\n\nFry the @chicken thighs{500%g} with @garam masala{2%tsp}.\n\`\`\`\n\n**Conversion notes**\n- Converted cups to grams.\n`;
+  await page.evaluate((text) => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', text);
+    document.querySelector('#src').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, reply('Chicken Tikka Test', 'main', 'chicken, curry'));
+  const src = await page.inputValue('#src');
+  ok(src.startsWith('---') && src.includes('@chicken thighs') && !src.includes('Conversion notes') && !src.includes('```'), 'pasting Claude\'s reply keeps only the recipe');
+  ok((await page.textContent('#toast')).includes("Took the recipe out of Claude's reply"), 'and says so');
+  ok(await page.inputValue('#folder') === '3 Mains/Curry', `the category follows the course and tags (${await page.inputValue('#folder')})`);
+  ok(await page.inputValue('#file') === 'chicken_tikka_test', 'the file name follows the title');
+
+  await page.evaluate((b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'photo.png', { type: 'image/png' }));
+    document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, png.toString('base64'));
+  ok(await page.waitForSelector('#photo-thumb img', { timeout: 3000 }).then(() => true, () => false), 'a pasted photo becomes the recipe photo');
+
+  await page.click('#photo-link');
+  await page.fill('#ask-text', 'https://closed.example.test/dish.png');
+  await page.click('dialog button:has-text("Add")');
+  ok(await until2(page, () => page.textContent('#toast').then((t) => t.includes('use Paste photo instead'))), 'a site that blocks downloads says to paste the photo instead');
+  await page.click('#photo-link');
+  await page.fill('#ask-text', 'https://photos.example.test/dish.png');
+  await page.click('dialog button:has-text("Add")');
+  ok(await until2(page, () => page.textContent('#toast').then((t) => t.includes('Photo added'))), 'a photo link from a site that allows it is added');
+
+  // The Paste recipe button reads the clipboard and asks before replacing.
+  await page.evaluate((text) => navigator.clipboard.writeText(text), reply('Lentil Soup Test', 'soup', 'lentils'));
+  await page.click('#paste-recipe');
+  await page.click('dialog button:has-text("Replace")');
+  ok(await until2(page, () => page.inputValue('#src').then((v) => v.includes('title: Lentil Soup Test') && !v.includes('Chicken Tikka'))), 'Paste recipe replaces the text after asking');
+  ok(await page.inputValue('#folder') === '2 Starters and Soups' && await page.inputValue('#file') === 'lentil_soup_test', 'and the category and file name follow the new recipe');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/editor-paste.png` });
+
+  await page.click('#save');
+  await page.waitForSelector('.recipe[data-path="2 Starters and Soups/lentil_soup_test"]', { timeout: 8000 });
+  const soups = byName('ROOT', '2 Starters and Soups').id;
+  ok(Boolean(byName(soups, 'lentil_soup_test.cook')) && Boolean(byName(soups, 'lentil_soup_test.jpg')), 'saving puts the recipe and its photo in the chosen category');
+  await page.goto(`${BASE}/#/edit/2%20Starters%20and%20Soups/lentil_soup_test`);
+  await page.waitForSelector('#del');
+  await page.click('#del');
+  await page.click('dialog button:has-text("Move to trash")');
+  await page.waitForSelector('.home');
   await ctx.close();
 }
 

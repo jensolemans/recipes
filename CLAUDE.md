@@ -52,6 +52,13 @@ folders use the same files.
   and rebuilds the data from the synced Drive folder when recipes change.
   Settings in `local.json` (gitignored). Started by the desktop app's Browser
   pane through `.claude/launch.json`.
+- `.claude/skills/import-recipe/`: the `/import-recipe` command for Claude
+  Code on the laptop. Takes a link, pasted text or a cookbook photo, converts
+  it with Jens's `cooklang-recipe` skill, saves the `.cook` file in the right
+  folder of the synced Drive folder, adds the dish photo with
+  `scripts/fetch_photo.py` and runs `tools/cooklint.py`. In the site's editor,
+  pasting Claude's whole reply keeps only the recipe, the category follows
+  the course and tags, and Paste photo / Photo link add the photo.
 - `.github/workflows/publish.yml`: hourly (and on push to main) downloads the
   recipes with rclone (service account, read only), runs build.py and deploys
   to GitHub Pages. Repo variables: `GDRIVE_FOLDER_ID`, `GOOGLE_CLIENT_ID`,

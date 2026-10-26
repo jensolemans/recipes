@@ -358,7 +358,10 @@ button.timer-chip:hover { background: var(--strong); color: var(--on-strong); }
   text-decoration: underline; text-underline-offset: 3px; padding: 4px 2px;
 }
 .modal-field { margin: 0 0 20px; }
-.modal-field select { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 12px; }
+.modal-field select, .modal-field input { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 12px; }
+.modal-field input:focus { outline: none; border-color: var(--strong); }
+.tool-btn.tool-paste { background: var(--strong); color: var(--on-strong); border-color: var(--strong); font-weight: 600; }
+.tool-btn.tool-paste:hover { opacity: .86; }
 
 /* ---------- shopping list ---------- */
 .icon-link {
@@ -523,7 +526,7 @@ body.has-tabbar[data-view="recipe"] .timers { bottom: calc(var(--tabbar-h) + 70p
 .file-input input { flex: 1; min-width: 0; border: 0; background: none; outline: none; padding: 10px 0; font-family: ui-monospace, monospace; font-size: 14px; }
 .file-input span { color: var(--muted); font-family: ui-monospace, monospace; font-size: 14px; }
 .file-input:focus-within, .field select:focus { border-color: var(--strong); }
-.photo-row { display: flex; align-items: center; gap: 10px; }
+.photo-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .photo-thumb {
   width: 56px; height: 42px; border-radius: 6px; overflow: hidden; background: var(--soft);
   display: grid; place-items: center; font-size: 12px; color: var(--muted);
