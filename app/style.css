@@ -480,6 +480,32 @@ body.has-side .toast { max-width: min(520px, calc(100% - var(--side-w) - 32px));
 .shop-panel .shop-empty p { font-size: 15px; }
 .shop-panel .shop-clear { margin-top: 24px; min-height: 44px; font-size: 14px; }
 
+/* ---------- tab bar (narrow screens, signed in) ---------- */
+body.has-tabbar { --tabbar-h: calc(61px + env(safe-area-inset-bottom)); padding-bottom: var(--tabbar-h); }
+body.has-tabbar .account .icon-link, body.has-tabbar .btn-new { display: none; }
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 16; display: flex;
+  background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1; min-height: 60px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600; -webkit-tap-highlight-color: transparent;
+}
+.tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab[aria-current="page"] { color: var(--ink); }
+.tab[aria-current="page"]::before {
+  content: ""; position: absolute; top: -1px; left: 50%; width: 32px; margin-left: -16px; height: 3px; border-radius: 0 0 2px 2px; background: var(--accent);
+}
+.tab .badge { top: 5px; right: auto; left: calc(50% + 6px); }
+/* On a recipe, adding to the list is the main thing: a wide button just above the bar. */
+body.has-tabbar[data-view="recipe"] { padding-bottom: calc(var(--tabbar-h) + 68px); }
+body.has-tabbar[data-view="recipe"] #add-list {
+  position: fixed; left: 16px; right: 16px; bottom: calc(var(--tabbar-h) + 10px); z-index: 14;
+  min-height: 48px; font-size: 15px; box-shadow: var(--shadow);
+}
+body.has-tabbar .timers { bottom: calc(var(--tabbar-h) + 12px); }
+body.has-tabbar[data-view="recipe"] .timers { bottom: calc(var(--tabbar-h) + 70px); }
+
 /* ---------- editor ---------- */
 .editor-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .editor-bar h1 { flex: 1; font-size: 26px; letter-spacing: -.02em; margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

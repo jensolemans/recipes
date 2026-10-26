@@ -31,7 +31,9 @@ folders use the same files.
     page checks Drive every 15 s and when the tab comes back. From 1100 px
     wide the list also sits on the right as a side panel (`#side`): a rail
     when closed, open or closed remembered per device, L toggles it, the
-    editor keeps it a rail and the list page hides it.
+    editor keeps it a rail and the list page hides it. Narrower than that,
+    signed in, a bottom tab bar (`#tabbar`: Recipes, Shopping list, New)
+    takes its place, with Add to shopping list pinned above it on recipes.
   - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
     that opens without a connection. The service worker serves the site from
     its cache and refreshes it in the background (network first on

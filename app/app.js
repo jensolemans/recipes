@@ -230,6 +230,7 @@ function initTheme() {
 // ---------------------------------------------------------------- account bar
 
 function renderAccount() {
+  renderTabbar();
   const el = $('#account');
   if (!drive.enabled()) { el.innerHTML = ''; return; }
   const list = drive.wasSignedIn() ? listLink() : '';
@@ -866,7 +867,7 @@ async function showRecipe(rawPath, params) {
     const id = shop.newId();
     const keys = shop.recipeKeys(e.src, factor, shopCtx(), parts);
     // The new lines light up for a moment in the side panel.
-    S.flash = { recipeId: id, keys: new Set(keys), until: Date.now() + 2500 };
+    S.flash = { recipeId: id, keys: new Set(keys), start: Date.now(), until: Date.now() + 2500 };
     S.shop.do({ t: 'addRecipe', id, path, title: e.title, servings: base ? servings : null, factor, parts, keys });
     // The first time on a wide screen the panel opens by itself; after
     // that it stays the way it was left.
@@ -918,10 +919,7 @@ const partsText = (parts) => `only ${joinAnd(parts.map((p, i) => (i ? p.toLowerC
 const joinAnd = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
 function listLink() {
-  let n = 0;
-  if (S.shop && S.parserReady) {
-    try { n = [...built().groups.values()].filter((g) => toBuy(g) && !g.checked).length; } catch { /* list not ready */ }
-  }
+  const n = S.shop ? toBuyCount() : 0;
   return `<a class="icon-link" href="#/list" title="Shopping list" aria-label="Shopping list${n ? `, ${n} to buy` : ''}">${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}</a>`;
 }
 
@@ -1081,18 +1079,43 @@ function renderSide() {
   }
   if ($('.shop-panel', el)) stopListPolling();
   if (mode === 'off') { el.innerHTML = ''; return; }
-  let n = 0;
-  if (S.parserReady) {
-    try { n = [...built().groups.values()].filter((g) => toBuy(g) && !g.checked).length; } catch { /* list not ready */ }
-  }
+  const n = toBuyCount();
   el.innerHTML = `<button class="rail" id="rail" title="Shopping list (L)" aria-label="Open the shopping list${n ? `, ${n} to buy` : ''}">
     ${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>${PANEL_ICON}
   </button>`;
   $('#rail').onclick = () => setSide('open');
 }
 
+// ---------------------------------------------------------------- tab bar (phones and narrow windows)
+
+// Signed in on a narrower screen, Recipes, Shopping list and New sit at the
+// bottom, in reach of a thumb. The editor hides it to leave room to write.
+const CHEF_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 14.5a4 4 0 1 1 1.6-7.7 4 4 0 0 1 6.8 0A4 4 0 1 1 17 14.5V19a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1z"/><path d="M7 16.5h10"/></svg>';
+const PLUS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+
+function toBuyCount() {
+  if (!S.parserReady) return 0;
+  try { return [...built().groups.values()].filter((g) => toBuy(g) && !g.checked).length; } catch { return 0; }
+}
+
+function renderTabbar() {
+  const el = $('#tabbar');
+  const { path } = parseHash();
+  const show = !wide.matches && S.shop && drive.wasSignedIn() && path !== '/new' && !path.startsWith('/edit/');
+  document.body.classList.toggle('has-tabbar', Boolean(show));
+  el.hidden = !show;
+  if (!show) { el.innerHTML = ''; return; }
+  const n = toBuyCount();
+  const tab = (href, icon, label, on, extra = '') => `<a class="tab" href="${href}"${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span>${extra}</a>`;
+  el.innerHTML = [
+    tab('#/', CHEF_ICON, 'Recipes', path !== '/list'),
+    tab('#/list', BASKET_ICON, 'Shopping list', path === '/list', n ? `<span class="badge" aria-label="${n} to buy">${n}</span>` : ''),
+    tab('#/new', PLUS_ICON, 'New', false),
+  ].join('');
+}
+
 function initSide() {
-  wide.addEventListener('change', renderSide);
+  wide.addEventListener('change', () => { renderSide(); renderTabbar(); });
   document.addEventListener('keydown', (ev) => {
     if (ev.key.toLowerCase() !== 'l' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.target.closest('input, textarea, select, [contenteditable]') || $('#modal').open) return;
@@ -1150,7 +1173,9 @@ function shopRow(g, { total = g.total, recipeId = '', item = '', note = '' } = {
   const qty = amount(total);
   const f = S.flash;
   const isNew = f && Date.now() < f.until && f.keys.has(g.key) && (!recipeId || recipeId === f.recipeId) && !item;
-  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}${isNew ? ' is-new' : ''}" data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
+  // A redraw (after saving to Drive) picks the flash up where it was, so it plays once.
+  const flash = isNew ? ` style="animation-delay:-${Date.now() - f.start}ms"` : '';
+  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}${isNew ? ' is-new' : ''}"${flash} data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
     <label class="shop-main">
       <input type="checkbox" class="tick" ${g.checked ? 'checked' : ''}>
       <span class="ing-qty">${esc(qty)}</span>

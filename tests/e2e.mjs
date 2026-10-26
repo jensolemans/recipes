@@ -381,7 +381,11 @@ const newPage = async (opts = {}) => {
   const at = (n) => produce.findIndex((t) => t.startsWith(n));
   ok(at('onion') < at('garlic') && at('garlic') < at('celery'), `items follow the aisle.conf order within an aisle (${produce.map((t) => t.split(/[A-Z]/)[0]).join(', ')})`);
   ok(await page.$eval('.brand', (b) => b.getBoundingClientRect().height < 30), 'site title stays on one line on a phone');
-  ok(await page.isVisible('.btn-new svg') && !(await page.isVisible('.btn-new span')), 'New recipe is a + button on a phone');
+  const tabs = await page.$$eval('#tabbar .tab', (ts) => ts.map((t) => `${t.textContent.trim()}${t.getAttribute('aria-current') ? '*' : ''}`));
+  ok(tabs.length === 3 && tabs[0] === 'Recipes' && /^Shopping list\d*\*$/.test(tabs[1]) && tabs[2] === 'New', `phone has a bottom tab bar with the list selected (${tabs.join(' | ')})`);
+  ok(!(await page.isVisible('.account .icon-link')) && !(await page.isVisible('.btn-new')), 'the top bar leaves the list and New to the tab bar');
+  const barTop = await page.$eval('#tabbar', (t) => t.getBoundingClientRect().top);
+  ok(barTop > 844 - 80 && barTop < 844, 'the tab bar sits at the bottom of the screen');
 
   // offers to renew the sign-in before the hour runs out
   await page.evaluate(async () => {
@@ -469,6 +473,25 @@ const newPage = async (opts = {}) => {
   ok(await until(() => !listJson().recipes.length && !listJson().items.length, 'clear all'), 'Clear shopping list empties it');
   await page.waitForSelector('.shop-empty');
 
+  // phone: the add button sits just above the tab bar, the editor hides the bar
+  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.waitForSelector('#add-list');
+  const add = await page.$eval('#add-list', (b) => b.getBoundingClientRect().toJSON());
+  const bar = await page.$eval('#tabbar', (t) => t.getBoundingClientRect().top);
+  ok(add.bottom <= bar && bar - add.bottom < 20 && add.width > 300, 'on a recipe, a wide Add to shopping list sits just above the tab bar');
+  ok(await page.$eval('#tabbar .tab[aria-current]', (t) => t.textContent.trim()) === 'Recipes', 'Recipes is selected on a recipe');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/tabbar-recipe.png` });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto(`${BASE}/#/list`);
+  await page.waitForSelector('.shop-body');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/tabbar-list-dark.png` });
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.click('#tabbar .tab:has-text("New")');
+  await page.waitForSelector('#src');
+  ok(!(await page.isVisible('#tabbar')) && await page.isVisible('.btn-new'), 'the editor hides the tab bar');
+  await page.click('a.link-btn:has-text("Cancel")');
+  await page.waitForSelector('#tabbar .tab');
+
   // a recipe in parts asks which parts to shop for
   await page.goto(`${BASE}/#/r/3%20Mains/Meat/swedish_meatballs`);
   await page.waitForSelector('#add-list');
@@ -543,6 +566,9 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('.side .shop-row');
   ok(true, 'the first add opens the panel by itself');
   ok(await page.locator('.side .shop-row.is-new').count() > 3, 'the new lines light up');
+  await page.waitForTimeout(900);
+  const delays = await page.$$eval('.side .shop-row.is-new', (rows) => rows.map((r) => -parseFloat(r.style.animationDelay)));
+  ok(delays.length > 0 && Math.min(...delays) >= 300, `a redraw after saving carries on the same flash instead of starting again (${Math.round(Math.min(...delays))} ms in)`);
   ok(!(await page.isVisible('.toast-btn')), 'no View list button while the panel is open');
   ok(await mainRight() <= 1400 - 340, 'the recipe makes room for the panel');
   await page.waitForTimeout(800);
@@ -591,7 +617,7 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
-  ok(!(await page.isVisible('#side')) && await page.isVisible('.account .icon-link'), 'narrower than 1100 px it goes back to the top bar button');
+  ok(!(await page.isVisible('#side')) && await page.isVisible('#tabbar'), 'narrower than 1100 px the panel gives way to the tab bar');
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 0, `no sideways scroll at 1000 px (${over}px)`);
   await ctx.close();
