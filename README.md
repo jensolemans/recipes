@@ -69,7 +69,7 @@ Open the site and click **Sign in** (top right). Google shows "Google hasn't ver
 
 ## Good to know
 
-- **Sign-in lasts an hour** and ends when you close the tab. Click **Sign in** again when it asks.
+- **Sign-in lasts an hour**, also after closing the tab. When it runs out, tap **Renew sign-in** at the top (or just **Save**): Google's window flashes and closes, and you stay on the page with your changes. Google gives browser-only sites one-hour sign-ins; staying signed in longer would need a small server.
 - **Photos** you add on the site are resized to 1600 px and saved as `<file name>.jpg` next to the recipe in Drive.
 - **Categories** are your Drive folders. To add a category, create the folder in Drive and reload the site while signed in.
 - **Scaling** uses the official Cooklang rules: amounts marked fixed, like `@salt{=1%tsp}`, never change. Units stay as you wrote them.

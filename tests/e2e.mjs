@@ -36,6 +36,18 @@ const crepesFolder = byName('ROOT', '1 Breakfast').id;
 const crepes = byName(crepesFolder, 'crepes.cook');
 crepes.content = Buffer.from(crepes.content.toString().replace('title: Crêpes', 'title: Crêpes (from Drive)'));
 
+// Fake Google sign-in: hands out a token at once, as Google does for someone
+// who already allowed access.
+const fakeGis = (route) => route.fulfill({ contentType: 'text/javascript', body: `
+  window.__gis = { calls: 0, prompt: null };
+  window.google = { accounts: { oauth2: {
+    initTokenClient: (o) => ({ requestAccessToken: (p) => {
+      window.__gis.calls++; window.__gis.prompt = p && p.prompt;
+      setTimeout(() => o.callback({ access_token: 'fake' + window.__gis.calls, expires_in: 3600 }), 50);
+    } }),
+    revoke: () => {},
+  } } };` });
+
 async function driveRoute(route) {
   const req = route.request();
   const url = new URL(req.url());
@@ -173,10 +185,11 @@ const newPage = async (opts = {}) => {
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await ctx.addInitScript(() => {
-    sessionStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
+    localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
     localStorage.setItem('recipes.email', 'jens@example.com');
   });
   await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${BASE}/#/`);
@@ -253,6 +266,53 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/edit/3%20Mains/Curry/aloo_gobi`);
   await page.waitForSelector('#preview .step');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/editor.png` });
+  await ctx.close();
+}
+
+// 6. sign-in survives closing the tab, and renews in place when the hour ends
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await ctx.addInitScript(() => {
+    if (localStorage.getItem('test.seeded')) return;
+    localStorage.setItem('test.seeded', '1');
+    localStorage.setItem('recipes.session', JSON.stringify({ token: 'fake', expires: Date.now() + 3600e3, email: 'jens@example.com', name: 'Jens Olemans' }));
+    localStorage.setItem('recipes.email', 'jens@example.com');
+  });
+  await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  const first = await ctx.newPage();
+  await first.goto(`${BASE}/#/`);
+  await first.waitForSelector('a[href="#/new"]', { timeout: 15000 });
+  await first.close();
+
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.waitForSelector('#src', { timeout: 15000 });
+  ok(await page.isVisible('a[href="#/new"]'), 'sign-in survives closing the tab');
+
+  // Let the hour run out while editing.
+  await page.fill('#src', (await page.inputValue('#src')) + '\n> Saved after renewing\n');
+  const expire = () => page.evaluate(async () => {
+    const d = await import(new URL('drive.js', location.href).href);
+    d.user().expires = Date.now() - 1;
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expire();
+  await page.waitForSelector('#signin:has-text("Renew sign-in")');
+  ok((await page.textContent('#toast')).includes('changes are kept'), 'says the sign-in ran out and the changes are kept');
+  ok((await page.inputValue('#src')).includes('Saved after renewing'), 'editor stays open with the changes');
+
+  await page.click('#save');
+  await page.waitForSelector('.recipe', { timeout: 8000 });
+  ok(await page.evaluate(() => window.__gis.calls) === 1, 'Save renews the sign-in with one Google window');
+  ok(await page.evaluate(() => window.__gis.prompt) === '', 'renewal skips the account picker');
+  ok(byName(crepesFolder, 'crepes.cook').content.toString().includes('Saved after renewing'), 'save after renewing reaches Drive');
+
+  await expire();
+  await page.click('#signin:has-text("Renew sign-in")');
+  await page.waitForSelector('summary.avatar');
+  ok(page.url().includes('#/r/'), 'Renew sign-in keeps you on the same page');
   await ctx.close();
 }
 

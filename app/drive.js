@@ -14,9 +14,11 @@ let clientId = '';
 let tokenClient = null;
 let session = null; // { token, expires, email, name }
 
+// localStorage, so closing the tab (or the phone discarding it) keeps the
+// sign-in for the rest of its hour.
 const store = {
-  get() { try { return JSON.parse(sessionStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } },
-  set(v) { try { v ? sessionStorage.setItem(STORE_KEY, JSON.stringify(v)) : sessionStorage.removeItem(STORE_KEY); } catch { /* private mode */ } },
+  get() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } },
+  set(v) { try { v ? localStorage.setItem(STORE_KEY, JSON.stringify(v)) : localStorage.removeItem(STORE_KEY); } catch { /* private mode */ } },
 };
 const hint = {
   get() { try { return localStorage.getItem('recipes.email') || ''; } catch { return ''; } },
@@ -27,12 +29,27 @@ export function configure(id) {
   clientId = id || '';
   const saved = store.get();
   if (saved && saved.expires > Date.now() + 60_000) session = saved;
+  else store.set(null);
+  // Load Google's script early for a returning user, so a renewal tap opens
+  // the sign-in window straight away and the browser does not block it.
+  if (clientId && hint.get()) loadGis().catch(() => {});
 }
 
 export const enabled = () => Boolean(clientId);
 export const signedIn = () => Boolean(session && session.expires > Date.now());
 export const user = () => session;
 export const wasSignedIn = () => Boolean(hint.get());
+export const expiresAt = () => session?.expires || 0;
+
+/**
+ * Renews the sign-in if it has ended or ends within `margin` ms. Call it
+ * straight from a tap, before any other await: browsers only allow the
+ * Google window to open in direct response to a tap.
+ */
+export async function renewIfNeeded(margin = 5 * 60_000) {
+  if (session && session.expires > Date.now() + margin) return;
+  await signIn();
+}
 
 function loadGis() {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -56,8 +73,9 @@ export async function signIn() {
       login_hint: hint.get() || undefined,
       callback: async (resp) => {
         if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
-        session = { token: resp.access_token, expires: Date.now() + (Number(resp.expires_in) || 3600) * 1000 };
-        try {
+        const prev = session || store.get() || {};
+        session = { token: resp.access_token, expires: Date.now() + (Number(resp.expires_in) || 3600) * 1000, email: prev.email, name: prev.name };
+        if (!session.email) try {
           const about = await call(`${API}/about?fields=user(emailAddress,displayName)`);
           session.email = about.user?.emailAddress || '';
           session.name = about.user?.displayName || '';
@@ -66,7 +84,10 @@ export async function signIn() {
         store.set(session);
         resolve(session);
       },
-      error_callback: (err) => reject(new Error(err?.type === 'popup_closed' ? 'Sign-in was cancelled.' : (err?.message || 'Sign-in failed.'))),
+      error_callback: (err) => reject(new Error(
+        err?.type === 'popup_closed' ? 'Sign-in was cancelled.'
+          : err?.type === 'popup_failed_to_open' ? 'Your browser blocked the Google sign-in window. Tap again to try once more.'
+            : (err?.message || 'Sign-in failed.'))),
     });
     tokenClient.requestAccessToken({ prompt: hint.get() ? '' : 'consent' });
   });
@@ -81,9 +102,12 @@ export function signOut() {
   hint.set('');
 }
 
+const expired = () => Object.assign(new Error('Your Google sign-in ran out. Tap the sign-in button at the top, then try again.'), { code: 401 });
+
+// Never opens the sign-in window by itself: outside a tap the browser would
+// block it. Taps renew first with renewIfNeeded().
 async function ensureToken() {
-  if (signedIn()) return;
-  await signIn();
+  if (!signedIn()) throw expired();
 }
 
 async function call(url, opts = {}, raw = false) {
@@ -92,8 +116,9 @@ async function call(url, opts = {}, raw = false) {
     headers: { Authorization: `Bearer ${session?.token}`, ...(opts.headers || {}) },
   });
   if (res.status === 401) {
-    session = null; store.set(null);
-    throw Object.assign(new Error('Your sign-in expired. Sign in again to continue.'), { code: 401 });
+    if (session) session.expires = 0;
+    store.set(null);
+    throw expired();
   }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;

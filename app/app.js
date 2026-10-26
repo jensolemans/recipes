@@ -124,6 +124,8 @@ async function boot() {
   window.addEventListener('beforeunload', (ev) => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
   route();
   if (drive.signedIn()) goLive();
+  watchSession();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) watchSession(); });
 }
 
 // ---------------------------------------------------------------- routing
@@ -193,20 +195,47 @@ function renderAccount() {
         </div>
       </details>`;
     el.querySelector('[data-action="signout"]').onclick = () => { drive.signOut(); location.reload(); };
-    el.querySelector('[data-action="refresh"]').onclick = () => { el.querySelector('details').open = false; goLive(); };
+    el.querySelector('[data-action="refresh"]').onclick = async () => {
+      el.querySelector('details').open = false;
+      try { await drive.renewIfNeeded(); } catch (e) { toast(e.message); renderAccount(); return; }
+      goLive();
+    };
     return;
   }
-  el.innerHTML = '<button class="link-btn" id="signin">Sign in</button>';
+  if (S.live === 'on') {
+    // Live data is loaded but the hour ran out: renew in place, keep the page.
+    el.innerHTML = '<button class="btn btn-quiet btn-sm" id="signin">Renew sign-in</button>';
+  } else {
+    el.innerHTML = '<button class="link-btn" id="signin">Sign in</button>';
+  }
   $('#signin').onclick = () => signInFlow();
 }
 
 async function signInFlow() {
   try {
     await drive.signIn();
+    watchSession();
+    if (S.live === 'on') { renderAccount(); toast('Signed in again for another hour.'); return; }
     await goLive();
   } catch (e) {
     toast(e.message || 'Sign-in failed.');
     renderAccount();
+  }
+}
+
+// Google sign-ins in the browser last an hour. When it ends while live, swap
+// the account menu for a one-tap "Renew sign-in" and say so once.
+let sessionTimer;
+function watchSession() {
+  clearTimeout(sessionTimer);
+  if (!drive.enabled()) return;
+  const left = drive.expiresAt() - Date.now();
+  if (left > 0) { sessionTimer = setTimeout(watchSession, Math.min(left + 500, 2 ** 31 - 1)); return; }
+  if (S.live === 'on' && !$('#account #signin')) {
+    renderAccount();
+    toast(S.dirty
+      ? 'Your Google sign-in ran out. Your changes are kept: Save renews it with one tap.'
+      : 'Your Google sign-in ran out. Tap Renew sign-in to keep editing.');
   }
 }
 
@@ -884,7 +913,8 @@ function resizeImage(file, max = 1600) {
 async function showEditor(rawPath) {
   document.body.dataset.view = 'editor';
   if (!drive.enabled()) { go('#/'); return; }
-  if (!(S.live === 'on' && drive.signedIn())) {
+  // An ended sign-in does not block editing: Save renews it.
+  if (S.live !== 'on') {
     if (S.live === 'loading') { $('#main').innerHTML = '<p class="loading">Syncing with Google Drive…</p>'; return; }
     $('#main').innerHTML = `<div class="empty"><h1>Sign in to edit</h1><p>Editing changes the recipe files in Google Drive, so only the owner of the folder can do it.</p><button class="btn btn-primary" id="signin2">Sign in with Google</button></div>`;
     $('#signin2').onclick = () => signInFlow();
@@ -1038,13 +1068,14 @@ async function showEditor(rawPath) {
       });
       if (!ok) return;
       try {
+        await drive.renewIfNeeded();
         await drive.trash(e.driveId);
         if (e.driveImage) await drive.trash(e.driveImage.id).catch(() => {});
         S.recipes.delete(e.path);
         S.dirty = false;
         toast(`${e.title} moved to the Google Drive trash.`);
         go('#/');
-      } catch (err) { toast(err.message); }
+      } catch (err) { toast(err.message); renderAccount(); }
     };
   }
 
@@ -1072,6 +1103,18 @@ async function showEditor(rawPath) {
     }
     const folderId = S.drive.folders.get(st.folder);
     if (!folderId) { toast('That category no longer exists in Google Drive. Reload and try again.'); return; }
+
+    // Renew first, while we are still inside the tap, so the sign-in cannot
+    // run out halfway through saving the recipe and its photo.
+    try {
+      await drive.renewIfNeeded();
+    } catch (err) {
+      toast(err.message);
+      renderAccount();
+      return;
+    }
+    watchSession();
+    renderAccount();
 
     st.saving = true;
     $('#save').disabled = true;
@@ -1136,6 +1179,7 @@ async function showEditor(rawPath) {
       go(`#/r/${encPath(newPath)}`);
     } catch (err) {
       if (!err.quiet) toast(err.message || 'Saving failed.');
+      if (err.code === 401) renderAccount();
       $('#save-state').textContent = S.dirty ? 'Unsaved changes' : '';
     } finally {
       st.saving = false;
