@@ -718,10 +718,11 @@ const newPage = async (opts = {}) => {
   await page.reload();
   await page.waitForSelector('.card');
   ok(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)), 'offline helper is running');
+  const online = (await page.$$('.card')).length;
   await ctx.setOffline(true);
   await page.reload();
   await page.waitForSelector('.card', { timeout: 8000 });
-  ok((await page.$$('.card')).length === 155, 'home opens without a connection');
+  ok((await page.$$('.card')).length === online, `home opens without a connection (${online} recipes)`);
   await page.evaluate(() => { location.hash = '#/r/3%20Mains/Pasta/lasagna?s=4'; });
   ok(await page.waitForSelector('.recipe .step', { timeout: 8000 }).then(() => true, () => false), 'a recipe opens and scales without a connection');
   await ctx.close();

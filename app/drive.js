@@ -75,12 +75,13 @@ export async function signIn() {
         if (resp.error) { reject(new Error(resp.error_description || resp.error)); return; }
         const prev = session || store.get() || {};
         session = { token: resp.access_token, expires: Date.now() + (Number(resp.expires_in) || 3600) * 1000, email: prev.email, name: prev.name };
-        if (!session.email) try {
+        // Ask every time: another Google account may have been picked.
+        try {
           const about = await call(`${API}/about?fields=user(emailAddress,displayName)`);
           session.email = about.user?.emailAddress || '';
           session.name = about.user?.displayName || '';
           hint.set(session.email);
-        } catch { /* not essential */ }
+        } catch { /* not essential: keep the last known name */ }
         store.set(session);
         resolve(session);
       },
