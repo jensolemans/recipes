@@ -72,12 +72,15 @@ folders use the same files.
 
 ## Working on it
 
-- Preview: start "Recipe site" in the Browser pane (or `python scripts/dev.py`)
-  and check every change there, on desktop and phone width (390 px), light and
-  dark mode.
+- While building: make the change and show it in the preview ("Recipe site" in
+  the Browser pane, or `python scripts/dev.py`), in one view only. Check with
+  page text and the console; take a screenshot only when the change is visual.
+  No full screenshot pass and no tests after each change.
+- When Jens is happy and wants to commit: one full check on desktop and phone
+  width (390 px), light and dark mode, then run the tests, then commit.
 - Tests: with the preview running,
   `node tests/e2e.mjs http://localhost:8000 "<recipesDir from local.json>"`
-  (needs `npm i -g playwright` once). Run them before pushing.
+  (needs `npm i -g playwright` once). They must pass before every commit.
 - Never write to the real Drive folder while testing; the tests use the fake.
 - Pushing to `main` publishes the site within about a minute. Do larger
   changes on a branch first.
