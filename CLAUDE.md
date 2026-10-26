@@ -58,7 +58,11 @@ folders use the same files.
   cook time, tags (yield optional). File names are snake_case.
 - Interface text: plain English, sentence case, short. No em dashes anywhere
   (UI copy, docs, commit messages).
-- Design: cool off-white paper, herb green accent (#2F5D46), butter-yellow
-  highlighter for ingredients inside method steps. Keep it that way unless
-  asked; colours are CSS variables in `app/style.css`, with a dark theme.
+- Design: minimal and neutral, white and black (#FAFAFA / #0E0E0E pages).
+  The Cooklang orange (#E77B54) is used sparingly, only where an accent helps:
+  the full-height ingredient highlighter in method steps, the selected category, focus
+  rings and a finished timer. Buttons and selected chips are black (white in
+  dark). Keep it that way unless asked; colours are CSS variables in
+  `app/style.css`. The top bar toggle cycles Auto, Light and Dark, saved per
+  device.
 - Keep the site dependency-free and static so it stays free to host.

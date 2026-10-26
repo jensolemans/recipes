@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipes</title>
   <meta name="description" content="A personal recipe collection.">
-  <meta name="theme-color" content="#F6F7F3" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#121915" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#FAFAFA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
+  <script>try { var t = JSON.parse(localStorage.getItem('recipes.theme')); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preload" href="fonts/bricolage-grotesque-latin-opsz-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
@@ -17,7 +18,10 @@
   <a class="skip" href="#main">Skip to content</a>
   <header class="topbar">
     <a class="brand" href="#/" data-brand>Recipes</a>
-    <div class="account" id="account"></div>
+    <div class="top-right">
+      <button class="theme-btn" id="theme" type="button"></button>
+      <div class="account" id="account"></div>
+    </div>
   </header>
   <main id="main" tabindex="-1">
     <p class="loading">Loading recipes…</p>

@@ -98,6 +98,7 @@ function makeEntry(r) {
 // ---------------------------------------------------------------- boot
 
 async function boot() {
+  initTheme();
   let data;
   try {
     const res = await fetch('data/recipes.json', { cache: 'no-cache' });
@@ -170,6 +171,44 @@ function route() {
 }
 
 const go = (hash) => { location.hash = hash; };
+
+// ---------------------------------------------------------------- theme
+
+// Auto follows the device; light and dark are remembered on this device.
+// index.html applies the saved choice before first paint.
+const THEMES = ['auto', 'light', 'dark'];
+const THEME_ICONS = {
+  auto: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/></svg>',
+  light: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>',
+  dark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
+};
+const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'auto') delete root.dataset.theme; else root.dataset.theme = theme;
+  const metas = $$('meta[name="theme-color"]');
+  metas.forEach((m) => {
+    const scheme = theme === 'auto' ? (m.media.includes('dark') ? 'dark' : 'light') : theme;
+    m.content = scheme === 'dark' ? '#0E0E0E' : '#FAFAFA';
+  });
+  const btn = $('#theme');
+  btn.innerHTML = THEME_ICONS[theme];
+  const label = `Theme: ${theme}. Switch to ${THEME_NEXT[theme]}`;
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+}
+
+function initTheme() {
+  let theme = saved.get('theme', 'auto');
+  if (!THEMES.includes(theme)) theme = 'auto';
+  applyTheme(theme);
+  $('#theme').onclick = () => {
+    theme = THEME_NEXT[theme];
+    saved.set('theme', theme);
+    applyTheme(theme);
+  };
+}
 
 // ---------------------------------------------------------------- account bar
 
@@ -326,10 +365,10 @@ async function goLive() {
 
 const FACETS = [
   ['course', 'Course'],
-  ['cuisine', 'Cuisine'],
   ['diet', 'Diet'],
   ['difficulty', 'Difficulty'],
   ['time', 'Time'],
+  ['cuisine', 'Cuisine'],
   ['tags', 'Tags'],
 ];
 const TIME_BUCKETS = ['30 min or less', '30 to 60 min', '1 to 2 hours', 'Over 2 hours'];
