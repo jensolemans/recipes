@@ -32,10 +32,28 @@ Mostly front end, quick wins, used every week.
 
 The planning features, built the same way as the shopping list.
 
-- [ ] **Meal planner.** A week view to put recipes (with a scale) on days, plus
-  free text like "eating out". "Add this week to the shopping list" in one go.
-  *Paprika, Mealie, Samsung Food, ReciMe, Mela, Crouton.* Stored in Drive as
-  `config/meal_plan.json` with the same offline queue as the shopping list.
+- [ ] **Meal planner.** For meal prep weeks: pick recipes first, put them on
+  days after. *Mealime, Plan to Eat, Paprika, Samsung Food.*
+  - **Unplanned.** "Add to plan" on every recipe puts it in Unplanned, a
+    list without dates. A recipe leaves Unplanned once it is put on a day.
+  - **Menu.** Has a start and end date (native date inputs, 1 and 2 week
+    shortcuts). Days go down, Breakfast, Lunch, Dinner and Snacks across.
+    One servings number scales the whole menu. Old menus are kept; a
+    switcher opens the one that covers today.
+  - **Plan page** (`#/plan`), in the top bar and as a phone tab. Desktop:
+    the normal recipe list on the left, the calendar on the right with
+    Unplanned as a tray. Drag from the tray or straight from the recipe
+    list into a slot, and between slots. Phone: the calendar with the tray
+    at the bottom; tap a tray recipe to pick it up, then tap slots to place
+    it.
+  - **Slots** hold recipes and ingredients (a + per slot, like "apples 4"),
+    no notes. Clicking a recipe opens it.
+  - **Add to shopping list** sends the menu into the existing list.
+  - **Storage.** Each menu is a Cooklang `.menu` file in Drive
+    (`Plans/2026-11-02.menu`, days as `== 2026-11-02 ==`), Unplanned is
+    `config/unplanned.json`, both with the shopping list's offline queue.
+    Check the `.menu` syntax against cooklang.org first, and keep build.py
+    from reading `.menu` files as recipes.
 - [ ] **Favourites and collections.** Hand-picked, ordered lists across
   folders, like "Weeknight", "Christmas" or "To try". Shown as a filter on
   the home page. *NYT Cooking (recipe box), Mealie and Paprika (cookbooks).*
