@@ -542,15 +542,26 @@ const newPage = async (opts = {}) => {
   // pantry and aisles
   await page.click('.seg [data-view="aisle"]');
   await row('olive oil').locator('[data-more]').click();
-  await page.click('dialog button:has-text("Always have this")');
+  await page.click('#item [role="switch"]:has-text("Always have this")');
   ok(await until(() => byName(config, 'pantry.conf')?.content.toString().includes('"olive oil" = {}'), 'pantry'), 'Always have this writes pantry.conf');
   ok(await until(() => page.locator('.shop-have .shop-name', { hasText: 'olive oil' }).count().then((n) => n === 1), 'have'), 'olive oil moves to Probably have');
+  ok(await until(() => page.getAttribute('#item [role="switch"]', 'aria-checked').then((v) => v === 'true'), 'switch'), 'the switch stays on');
+  await page.click('#item [data-close]');
   await row('bagged lettuce').locator('[data-more]').click();
-  await page.click('dialog button:has-text("Choose aisle")');
+  if (process.env.SHOT_DIR) {
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/item-card-phone.png` });
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    await page.screenshot({ path: `${process.env.SHOT_DIR}/item-card-phone-dark.png` });
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  }
+  await page.click('#item button:has-text("Add aisle")');
   await page.selectOption('#pick', { label: 'Produce' });
   await page.click('dialog button:has-text("Save")');
   ok(await until(() => /\[produce\][^[]*\nbagged lettuce\n/.test(byName(config, 'aisle.conf').content.toString()), 'aisle'), 'Choose aisle adds it to aisle.conf');
   ok(await until(() => page.locator('.shop-sec', { hasText: 'Produce' }).locator('.shop-name', { hasText: 'bagged lettuce' }).count().then((n) => n === 1), 'produce'), 'and the list sorts it there');
+  ok(await until(() => page.textContent('#item .item-val').then((t) => t.trim() === 'Produce').catch(() => false), 'card aisle'), 'the card shows the new aisle');
+  await page.click('#item [data-close]');
 
   const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   ok(over <= 0, `no sideways scroll on the list on a phone (${over}px)`);
@@ -706,6 +717,15 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/list`);
   await page.waitForSelector('#main .shop-row');
   ok(!(await page.isVisible('#side')) && (await page.$$('#shop-body')).length === 1, 'the list page shows the list once, without the panel');
+  await page.locator('#main .shop-row', { hasText: 'milk' }).first().locator('[data-more]').click();
+  await page.waitForSelector('#item.is-wide[open]');
+  ok(await page.locator('#item .item-uses li').count() === 3, 'the item card lists each recipe it is for');
+  await page.waitForTimeout(300);
+  await shot('item-card-wide');
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await shot('item-card-wide-dark');
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+  await page.click('#item [data-close]');
   await page.goto(`${BASE}/#/`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);

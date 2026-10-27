@@ -535,6 +535,51 @@ body:has(.share[open]) { overflow: hidden; }
 .share-quiet:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 .share .share-quiet svg { width: 18px; height: 18px; }
 
+/* ---------- shopping item card ---------- */
+/* What is behind an item's ... button. Phones: a bottom sheet, in thumb reach.
+   Bigger screens: a card in the middle. Same rows in both. */
+body:has(.item[open]) { overflow: hidden; }
+.item {
+  margin: auto 0 0; width: 100%; max-width: none; padding: 0 20px calc(16px + env(safe-area-inset-bottom));
+  border: 0; border-radius: 20px 20px 0 0; background: var(--card); color: var(--ink);
+}
+.item[open] { animation: sheet-up .22s ease-out; }
+.item::backdrop { background: rgba(10, 16, 13, .45); }
+.item.is-wide { margin: auto; width: min(400px, calc(100vw - 32px)); padding: 24px; border-radius: 18px; box-shadow: var(--shadow); }
+.item.is-wide[open] { animation: sheet-in .16s ease-out; }
+.item.is-wide .sheet-grab { display: none; }
+.item .sheet-grab { margin: 8px auto 12px; }
+.item svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.item-x { position: absolute; top: 18px; right: 12px; color: var(--ink); }
+.item.is-wide .item-x { top: 14px; }
+.item-x svg { width: 22px; height: 22px; }
+.item h2 { margin: 0 44px 14px 0; font-size: 28px; font-weight: 800; line-height: 1.08; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.item-uses { list-style: none; margin: 0 0 16px; padding: 0; }
+.item-uses li { display: flex; gap: 10px; padding: 3px 0; font-size: 16px; line-height: 1.4; }
+.item-uses li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin-top: .6em; flex: none; }
+.item-uses b { min-width: 58px; font-weight: 700; }
+.item-uses b:empty { display: none; }
+.item-uses .is-you { color: var(--muted); }
+.item-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 54px; padding: 0;
+  border: 0; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; font-size: 16px; text-align: left;
+}
+button.item-row { cursor: pointer; }
+.item-row > span:first-child { color: var(--muted); }
+.item-val { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.item-val svg { color: var(--muted); }
+.item-add { background: var(--soft); color: var(--ink); }
+.item-add:hover { border-color: var(--line); }
+.switch { position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--line); flex: none; transition: background .15s; }
+.switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--muted); transition: transform .15s, background .15s;
+}
+[aria-checked="true"] > .switch { background: var(--strong); }
+[aria-checked="true"] > .switch::after { transform: translateX(18px); background: var(--on-strong); }
+.item-remove { width: 100%; min-height: 48px; margin-top: 12px; border-color: var(--danger); color: var(--danger); font-size: 16px; }
+.item-remove:hover { background: var(--danger); color: var(--card); }
+
 /* ---------- shopping list ---------- */
 .icon-link {
   position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
@@ -891,7 +936,7 @@ body[data-view="cook"] .timers { bottom: calc(var(--cook-foot, 120px) + 8px); }
     color-scheme: light;
   }
   body { background: #fff; color: #000; font-size: 10.5pt; min-height: 0; display: block; }
-  .topbar, .foot, .side, .tabbar, .timers, .toast, .modal, .share, .skip, .crumbs, .recipe-actions, .tags, .tick { display: none !important; }
+  .topbar, .foot, .side, .tabbar, .timers, .toast, .modal, .share, .item, .skip, .crumbs, .recipe-actions, .tags, .tick { display: none !important; }
   main { max-width: none; padding: 0; }
   .print-only { display: block; }
 

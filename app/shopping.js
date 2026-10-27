@@ -67,6 +67,22 @@ export function addToAisle(text, section, name) {
   return lines.join('\n');
 }
 
+/** Puts an item under a section, moving it with its other spellings if it is already somewhere else. */
+export function moveInAisle(text, section, name) {
+  const key = lower(name);
+  const lines = String(text || '').split(/\r?\n/);
+  let inSection = false;
+  const at = lines.findIndex((raw) => {
+    const l = raw.replace(/\/\/.*$/, '').trim();
+    if (/^\[.+\]$/.test(l)) { inSection = true; return false; }
+    return inSection && l.split('|').some((sp) => lower(sp) === key);
+  });
+  if (at < 0) return addToAisle(text, section, name);
+  const line = lines[at].replace(/\/\/.*$/, '').trim();
+  lines.splice(at, 1);
+  return addToAisle(lines.join('\n'), section, line);
+}
+
 // ---------------------------------------------------------------- pantry.conf
 
 const pantryKey = (k) => lower(k.replace(/^["']|["']$/g, '').replace(/_/g, ' '));

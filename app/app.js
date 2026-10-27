@@ -1856,41 +1856,66 @@ function clearChecked() {
   });
 }
 
-async function itemSheet(row) {
-  const b = built();
-  const g = b.groups.get(row.dataset.key);
-  if (!g) return;
-  const ctx = shopCtx();
-  const { recipe: recipeId, item: itemId } = row.dataset;
-  const uses = [
-    ...g.sources.map((s) => (amount(s.total) ? `${s.title} (${amount(s.total)})` : s.title)),
-    ...b.manual.filter((it) => it.key === g.key).map((it) => (amount(it.total) ? `you (${amount(it.total)})` : 'you')),
-  ];
-  const where = g.home ? 'Made at home.' : g.sec >= 0 ? `Aisle: ${cap(ctx.aisle.sections[g.sec])}.` : 'Not in any aisle yet.';
-  const recipe = recipeId ? b.recipes.find((r) => r.id === recipeId) : null;
-  const actions = [{ label: 'Close', value: null }];
-  if (g.sec < 0 && !g.home) actions.push({ label: 'Choose aisle', value: 'aisle' });
-  if (!g.home) actions.push({ label: g.pantry ? 'Need to buy it' : 'Always have this', value: 'pantry' });
-  actions.push({ label: recipe ? `Remove from ${recipe.title}` : 'Remove from list', value: 'remove', danger: true });
-  const choice = await ask({ title: cap(g.name), body: `${uses.length ? `For ${joinAnd(uses)}. ` : ''}${where}`, actions });
+const CHEVRON_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>';
+const TRASH_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5"/></svg>';
 
-  if (choice === 'remove') {
-    if (recipe) undoable(`Removed ${g.name} from ${recipe.title}.`, { t: 'removeLine', recipeId, key: g.key });
-    else if (itemId) undoable(`Removed ${g.name}.`, { t: 'removeItem', id: itemId });
-    else undoable(`Removed ${g.name} from the list.`, { t: 'removeKeys', keys: [g.key], itemIds: g.items });
-  } else if (choice === 'pantry') {
-    if (g.pantry) {
-      if (await editConf('pantry', (t) => shop.removeFromPantry(t, g.key))) toast(`${cap(g.name)} is back on the list.`);
-    } else if (await editConf('pantry', (t) => shop.addToPantry(t, g.name))) {
-      toast(`${cap(g.name)} now goes under Probably have, saved in pantry.conf.`, {
-        label: 'Undo', run: () => editConf('pantry', (t) => shop.removeFromPantry(t, g.key)),
-      });
-    }
-  } else if (choice === 'aisle') {
-    const sections = ctx.aisle.sections;
-    const i = await pick({ title: `Where is ${g.name}?`, body: 'This is saved in aisle.conf, so it is sorted the same way next time.', label: 'Aisle', options: sections.map(cap) });
-    if (i != null && await editConf('aisle', (t) => shop.addToAisle(t, sections[i], g.name))) toast(`${cap(g.name)} now goes under ${cap(sections[i])}.`);
-  }
+/**
+ * The card behind an item's ... button: where it is used, its aisle, whether
+ * you always have it, and remove. A bottom sheet on phones, a card on bigger screens.
+ */
+function itemSheet(row) {
+  const dlg = $('#item');
+  const { key, recipe: recipeId, item: itemId } = row.dataset;
+  const acts = {
+    remove: (g, recipe) => {
+      dlg.close();
+      if (recipe) undoable(`Removed ${g.name} from ${recipe.title}.`, { t: 'removeLine', recipeId, key: g.key });
+      else if (itemId) undoable(`Removed ${g.name}.`, { t: 'removeItem', id: itemId });
+      else undoable(`Removed ${g.name} from the list.`, { t: 'removeKeys', keys: [g.key], itemIds: g.items });
+    },
+    pantry: async (g, recipe, el) => {
+      el.setAttribute('aria-checked', String(!g.pantry));
+      el.disabled = true;
+      await editConf('pantry', (t) => (g.pantry ? shop.removeFromPantry(t, g.key) : shop.addToPantry(t, g.name)));
+      if (dlg.open) render();
+    },
+    aisle: async (g) => {
+      const sections = shopCtx().aisle.sections;
+      const i = await pick({ title: `Where is ${g.name}?`, body: 'This is saved in aisle.conf, so it is sorted the same way next time.', label: 'Aisle', options: sections.map(cap), value: g.sec });
+      if (i != null && i !== g.sec && await editConf('aisle', (t) => shop.moveInAisle(t, sections[i], g.name)) && dlg.open) render();
+    },
+  };
+  const render = () => {
+    const b = built();
+    const g = b.groups.get(key);
+    if (!g) { if (dlg.open) dlg.close(); return null; }
+    const sections = shopCtx().aisle.sections;
+    const recipe = recipeId ? b.recipes.find((r) => r.id === recipeId) : null;
+    const uses = [
+      ...g.sources.map((src) => `<li><b>${esc(amount(src.total))}</b><span>${esc(src.title)}</span></li>`),
+      ...b.manual.filter((it) => it.key === g.key).map((it) => `<li class="is-you"><b>${esc(amount(it.total))}</b><span>Added by you</span></li>`),
+    ];
+    const aisle = g.home
+      ? '<div class="item-row"><span>Aisle</span><span class="item-val">Made at home</span></div>'
+      : g.sec >= 0
+        ? `<button class="item-row" data-act="aisle"><span>Aisle</span><span class="item-val">${esc(cap(sections[g.sec]))}${CHEVRON_ICON}</span></button>`
+        : `<div class="item-row"><span>Aisle</span><button class="btn btn-sm item-add" data-act="aisle">${PLUS_ICON}Add aisle</button></div>`;
+    const pantry = g.home ? '' : `<button class="item-row" role="switch" aria-checked="${g.pantry}" data-act="pantry"><span>I always have this</span><span class="switch" aria-hidden="true"></span></button>`;
+    dlg.classList.toggle('is-wide', wideBrowse.matches);
+    dlg.setAttribute('aria-label', cap(g.name));
+    dlg.innerHTML = `
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <button class="sheet-x item-x" data-close aria-label="Close">${CLOSE_ICON}</button>
+      <h2>${esc(cap(g.name))}</h2>
+      ${uses.length ? `<ul class="item-uses">${uses.join('')}</ul>` : ''}
+      ${aisle}${pantry}
+      <button class="btn item-remove" data-act="remove">${TRASH_ICON}${esc(recipe ? `Remove from ${recipe.title}` : 'Remove from list')}</button>`;
+    $('[data-close]', dlg).onclick = () => dlg.close();
+    $$('[data-act]', dlg).forEach((el) => { el.onclick = () => acts[el.dataset.act](g, recipe, el); });
+    return g;
+  };
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  if (render()) dlg.showModal();
 }
 
 /** Changes aisle.conf or pantry.conf in Drive. Call straight from a tap. */
@@ -2594,13 +2619,13 @@ function askText({ title, body, label, placeholder = '' }) {
 }
 
 /** Asks to choose one option from a list. Resolves with its index, or null. */
-function pick({ title, body, label, options }) {
+function pick({ title, body, label, options, value = -1 }) {
   const dlg = $('#modal');
   dlg.innerHTML = `<form method="dialog">
     <h2>${esc(title)}</h2>
     <p>${esc(body)}</p>
     <label class="field modal-field"><span>${esc(label)}</span>
-      <select id="pick">${options.map((o, i) => `<option value="${i}">${esc(o)}</option>`).join('')}</select>
+      <select id="pick">${options.map((o, i) => `<option value="${i}"${i === value ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>
     </label>
     <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary">Save</button></div>
   </form>`;
