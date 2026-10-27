@@ -82,6 +82,8 @@ folders use the same files.
   `node tests/e2e.mjs http://localhost:8000 "<recipesDir from local.json>"`
   (needs `npm i -g playwright` once). They must pass before every commit.
 - Never write to the real Drive folder while testing; the tests use the fake.
+- `ROADMAP.md` lists the features still to build, in order. Tick an item off
+  in the same commit that ships it.
 - Pushing to `main` publishes the site within about a minute. Do larger
   changes on a branch first.
 
