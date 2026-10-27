@@ -11,7 +11,7 @@ maintain (a Cloudflare Worker is the default choice).
 
 Mostly front end, quick wins, used every week.
 
-- [ ] **Cook mode.** Full screen, one step at a time, large text, with that
+- [x] **Cook mode.** Full screen, one step at a time, large text, with that
   step's ingredients and timers shown alongside. Swipe or tap to move on.
   Keeps the screen on by itself. *Crouton, Mela, Samsung Food, Cooklang.*
   Steps already know their ingredients, so this is mainly a new view.

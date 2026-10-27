@@ -17,7 +17,14 @@ folders use the same files.
     on phones, each folder with its subfolders on bigger screens) and the filters:
     a bottom sheet with two tabs on phones, a wide panel with both side by
     side on bigger screens, recipe view with scaling and timers,
-    editor.
+    cook mode (`#/cook/<path>`), editor.
+  - Cook mode: the recipe page's chef hat button opens it. Step 0 is the mise
+    en place (servings, ingredients and tools as ticks, shared with the
+    recipe page), then one step at a time (swipe or buttons, arrow keys) or
+    all steps in one column; the pick and "keep the screen on" (Wake Lock)
+    are saved per device. The bar at the bottom has a pill per step, grouped
+    and labelled by `== Section ==` chapters. From 900 px a list beside the
+    step ticks off what is behind you. `s`, `x` and `step` stay in the link.
   - `cooklang.js`: loads the official Cooklang WASM parser from
     `app/vendor/cooklang/` (@cooklang/cooklang 0.19.1) and formats quantities.
     The parser runs with `load_units = false` so units stay exactly as written
