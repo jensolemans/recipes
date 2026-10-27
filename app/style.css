@@ -366,6 +366,8 @@ body:has(.sheet[open]) { overflow: hidden; }
 .step-btn:disabled { opacity: .4; cursor: default; }
 /* Cook mode, shopping list and edit: round icons as tall as the servings pill */
 .recipe-actions .icon-btn { width: 48px; min-height: 48px; padding: 0; }
+/* the shared .icon-btn further down is see-through; cook mode stays the one black button */
+.recipe-actions .btn-primary, .recipe-actions .btn-primary:hover { background: var(--strong); color: var(--on-strong); }
 .icon-btn svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .recipe-body {
