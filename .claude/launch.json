@@ -6,8 +6,9 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["scripts/dev.py"],
       "port": 8000,
-      // Fixed port: Google sign-in only allows http://localhost:8000
-      "autoPort": false
+      // Falls back to another port when 8000 is taken (dev.py reads PORT).
+      // Google sign-in only works on http://localhost:8000.
+      "autoPort": true
     }
   ]
 }

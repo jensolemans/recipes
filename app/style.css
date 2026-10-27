@@ -124,7 +124,6 @@ body[data-view="home"] .brand { visibility: hidden; }
 .theme-btn:hover { color: var(--ink); background: var(--soft); }
 .theme-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .theme-btn svg .fill { fill: currentColor; stroke: none; }
-.sync { color: var(--muted); font-size: 14px; }
 .menu { position: relative; }
 .menu summary { list-style: none; cursor: pointer; }
 .menu summary::-webkit-details-marker { display: none; }
@@ -132,6 +131,14 @@ body[data-view="home"] .brand { visibility: hidden; }
   width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
   background: var(--soft); color: var(--strong); font-weight: 700;
 }
+/* loading from Google Drive: a ring turns around the account circle */
+.avatar.is-syncing { position: relative; color: var(--muted); }
+.avatar.is-syncing::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%;
+  border: 2px solid transparent; border-top-color: var(--strong); border-right-color: var(--strong);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .menu-pop {
   position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; width: 280px;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
@@ -169,6 +176,7 @@ body[data-view="home"] .brand { visibility: hidden; }
 }
 .sort:hover { border-color: var(--muted); }
 .sort:has(select:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sort .sort-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sort .chev { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sort select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
 
@@ -204,12 +212,13 @@ details.facet[open] summary .chev { transform: rotate(180deg); }
 .sort { flex: none; }
 /* phones: folder and sort share the row under the search and fill it */
 @media (max-width: 700px) {
-  .searchrow { display: grid; grid-template-columns: minmax(0, auto) minmax(0, auto); gap: 8px; }
+  .searchrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .search { grid-column: 1 / -1; }
   .place { flex: 1 1 auto; max-width: none; min-height: 44px; gap: 6px; padding: 0 8px 0 12px; }
-  .place-path, .sort { font-size: 14px; }
-  .sort { flex: 1 1 auto; min-width: 0; min-height: 44px; gap: 4px; padding: 0 8px 0 12px; }
-  .sort-now { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .place-path { font-size: 14px; }
+  /* sort is just its icon here; the choices still open on tap */
+  .sort { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+  .sort-now, .sort .chev { display: none; }
 }
 /* small phones: the folder icon makes room for the words */
 @media (max-width: 380px) { .place > svg:first-child { display: none; } .place { padding-left: 14px; } }
@@ -311,7 +320,6 @@ body:has(.sheet[open]) { overflow: hidden; }
 .card:hover .card-img img { transform: scale(1.03); }
 .ph { font-size: 64px; font-weight: 800; color: var(--muted); opacity: .5; }
 .card-body { display: flex; flex-direction: column; gap: 2px; }
-.card-where { font-size: 13px; color: var(--muted); }
 .card-title { font-size: 19px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; }
 .card:hover .card-title { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .card-facts { display: flex; gap: 12px; font-size: 14px; color: var(--muted); }
@@ -356,9 +364,10 @@ body:has(.sheet[open]) { overflow: hidden; }
   font-size: 22px; line-height: 1; cursor: pointer; font-weight: 600;
 }
 .step-btn:disabled { opacity: .4; cursor: default; }
-.add-list { gap: 8px; min-height: 46px; }
+.add-list { gap: 8px; }
+/* Edit and Add to shopping list stand as tall as the servings pill */
+.recipe-actions .btn { min-height: 48px; padding: 0 18px; }
 .add-list svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-#wake[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
 
 .recipe-body {
   display: grid; grid-template-columns: minmax(250px, 340px) minmax(0, 1fr); gap: 48px; margin-top: 44px; align-items: start;
@@ -378,7 +387,8 @@ body:has(.sheet[open]) { overflow: hidden; }
 .ing-note { color: var(--muted); font-size: 14px; }
 .ing-row.is-checked .ing-qty, .ing-row.is-checked .ing-name { opacity: .4; text-decoration: line-through; }
 .tools-h { margin-top: 30px !important; }
-.tool-list li { padding: 5px 0; }
+.tool-list .tool-row { grid-template-columns: auto minmax(0, 1fr); }
+.tool-list .tool-row:not(:has(.tick)) { display: block; }
 
 .method { max-width: 44em; }
 .section-name { font-size: 19px; margin: 30px 0 10px; }
@@ -604,7 +614,7 @@ body.has-tabbar .account .icon-link, body.has-tabbar .btn-new { display: none; }
 }
 .tab .badge { top: 5px; right: auto; left: calc(50% + 6px); }
 /* On narrow screens adding to the list is a round basket next to the servings. */
-body.has-tabbar #add-list { width: 46px; min-height: 46px; padding: 0; }
+body.has-tabbar #add-list { width: 48px; min-height: 48px; padding: 0; }
 body.has-tabbar #add-list span { display: none; }
 body.has-tabbar .timers { bottom: calc(var(--tabbar-h) + 12px); }
 
@@ -679,7 +689,6 @@ body.has-tabbar .timers { bottom: calc(var(--tabbar-h) + 12px); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 12px; }
   .card-title { font-size: 16px; }
   .card-facts { font-size: 13px; gap: 8px; }
-  .card-where { display: none; }
   .ing-row { grid-template-columns: auto 78px minmax(0, 1fr); }
   .btn-new { width: 36px; padding: 0; }
   .btn-new svg { margin: 0; width: 18px; height: 18px; }

@@ -103,8 +103,7 @@ Useful, but lower priority.
 - [x] Search, folder browsing, filters and sort
 - [x] Scaling that respects fixed quantities
 - [x] Step timers with sound and notification
-- [x] Keep screen on
-- [x] Tick off ingredients while cooking
+- [x] Tick off ingredients and equipment while cooking
 - [x] Recipe references (recipes inside recipes)
 - [x] Shopping list from recipes and parts, sorted by aisle, with pantry
   items, offline changes and sync between devices

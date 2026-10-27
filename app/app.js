@@ -184,7 +184,6 @@ function route() {
   S.currentHash = location.hash || '#/';
   if (parseHash().path !== '/list') S.lastPage = S.currentHash; // where the full list goes back to
   renderAccount();
-  stopWakeLock();
   stopListPolling();
   renderSide();
   const { path, params } = parseHash();
@@ -200,37 +199,31 @@ const go = (hash) => { location.hash = hash; };
 
 // ---------------------------------------------------------------- theme
 
-// Auto follows the device; light and dark are remembered on this device.
-// index.html applies the saved choice before first paint.
-const THEMES = ['auto', 'light', 'dark'];
+// Light or dark. Until someone picks one it follows the device (dark when
+// the device says nothing); a pick is remembered on this device.
+// index.html applies the same choice before first paint.
 const THEME_ICONS = {
-  auto: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path class="fill" d="M12 4a8 8 0 0 1 0 16z"/></svg>',
   light: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>',
   dark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>',
 };
-const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
 
 function applyTheme(theme) {
-  const root = document.documentElement;
-  if (theme === 'auto') delete root.dataset.theme; else root.dataset.theme = theme;
-  const metas = $$('meta[name="theme-color"]');
-  metas.forEach((m) => {
-    const scheme = theme === 'auto' ? (m.media.includes('dark') ? 'dark' : 'light') : theme;
-    m.content = scheme === 'dark' ? '#0E0E0E' : '#FAFAFA';
-  });
+  document.documentElement.dataset.theme = theme;
+  $$('meta[name="theme-color"]').forEach((m) => { m.content = theme === 'dark' ? '#0E0E0E' : '#FAFAFA'; });
+  const next = theme === 'dark' ? 'light' : 'dark';
   const btn = $('#theme');
-  btn.innerHTML = THEME_ICONS[theme];
-  const label = `Theme: ${theme}. Switch to ${THEME_NEXT[theme]}`;
+  btn.innerHTML = THEME_ICONS[next];
+  const label = `Switch to ${next} mode`;
   btn.setAttribute('aria-label', label);
   btn.title = label;
 }
 
 function initTheme() {
-  let theme = saved.get('theme', 'auto');
-  if (!THEMES.includes(theme)) theme = 'auto';
+  let theme = saved.get('theme', null);
+  if (theme !== 'light' && theme !== 'dark') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
   applyTheme(theme);
   $('#theme').onclick = () => {
-    theme = THEME_NEXT[theme];
+    theme = theme === 'dark' ? 'light' : 'dark';
     saved.set('theme', theme);
     applyTheme(theme);
   };
@@ -244,7 +237,8 @@ function renderAccount() {
   if (!drive.enabled()) { el.innerHTML = ''; return; }
   const list = drive.wasSignedIn() ? listLink() : '';
   if (S.live === 'loading') {
-    el.innerHTML = `<span class="sync">Syncing with Google Drive…</span>${list}`;
+    const u = drive.user() || {};
+    el.innerHTML = `${list}<span class="avatar is-syncing" role="status" aria-label="Syncing with Google Drive" title="Syncing with Google Drive">${esc((u.name || u.email || '').charAt(0).toUpperCase())}</span>`;
     return;
   }
   if (S.live === 'on' && drive.signedIn()) {
@@ -475,12 +469,14 @@ function showHome() {
         <button class="place" id="place" aria-haspopup="dialog"></button>
         <label class="sort">
           <span class="sr">Sort</span>
+          <svg class="sort-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16m0 0-3.5-3.5M7 20l3.5-3.5M17 20V4m0 0-3.5 3.5M17 4l3.5 3.5"/></svg>
           <span class="sort-now" id="sort-now" aria-hidden="true"></span>
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
           <select id="sort">
+            <option value="recent">Latest</option>
             <option value="name">A to Z</option>
-            <option value="time">Quickest first</option>
-            <option value="recent">Recently changed</option>
+            <option value="time">Quickest</option>
+            <option value="random">Random</option>
           </select>
         </label>
       </div>
@@ -491,12 +487,19 @@ function showHome() {
   // The pill shows the choice itself, so it is always as wide as its words;
   // the real select lies invisibly on top of it.
   const sortNow = () => { $('#sort-now').textContent = $('#sort').selectedOptions[0]?.textContent || ''; };
+  if (![...$('#sort').options].some((o) => o.value === S.sort)) S.sort = 'recent';
   $('#sort').value = S.sort;
   sortNow();
   $('#place').onclick = openBrowse;
   $('#browse').onclick = (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); };
   $('#q').addEventListener('input', debounce((ev) => { S.filters.q = ev.target.value; updateHome(); }, 120));
-  $('#sort').onchange = (ev) => { S.sort = ev.target.value; saved.set('sort', S.sort); sortNow(); updateHome(); };
+  $('#sort').onchange = (ev) => {
+    S.sort = ev.target.value;
+    saved.set('sort', S.sort);
+    if (S.sort === 'random') S.shuffle = null; // picking Random again deals a new order
+    sortNow();
+    updateHome();
+  };
   updateHome();
 }
 
@@ -516,6 +519,12 @@ function updateHome() {
   const byName = (a, b) => collator.compare(a.title, b.title);
   if (S.sort === 'time') list.sort((a, b) => (a.time ?? 1e9) - (b.time ?? 1e9) || byName(a, b));
   else if (S.sort === 'recent') list.sort((a, b) => (b.modified || 0) - (a.modified || 0) || byName(a, b));
+  else if (S.sort === 'random') {
+    // one shuffled order that stays put while you search and filter
+    if (!S.shuffle) S.shuffle = new Map();
+    const at = (e) => { if (!S.shuffle.has(e.path)) S.shuffle.set(e.path, Math.random()); return S.shuffle.get(e.path); };
+    list.sort((a, b) => at(a) - at(b));
+  }
   else list.sort(byName);
 
   $('#grid').innerHTML = list.length ? list.map(card).join('') : `
@@ -689,7 +698,6 @@ function card(e) {
   return `<a class="card" href="#/r/${encPath(e.path)}">
     <span class="card-img">${img}</span>
     <span class="card-body">
-      <span class="card-where">${esc(folderLabel(e.folder))}</span>
       <span class="card-title">${esc(e.title)}</span>
       <span class="card-facts">${facts.map((x) => `<span>${esc(x)}</span>`).join('')}</span>
     </span>
@@ -763,7 +771,11 @@ function recipeBody(parsed, { interactive = true, path = '' } = {}) {
     if (seenTools.has(n)) continue;
     seenTools.add(n);
     const q = c.quantity ? fmtQuantity(c.quantity) : '';
-    tools.push(`<li>${esc(c.alias || c.name)}${q ? ` <span class="ing-note">${esc(q)}</span>` : ''}</li>`);
+    const key = `tool:${n}`;
+    tools.push(`<li class="ing-row tool-row${checked.has(key) ? ' is-checked' : ''}" data-key="${esc(key)}">
+      ${interactive ? `<input type="checkbox" class="tick" aria-label="Got ${esc(c.alias || c.name)}" ${checked.has(key) ? 'checked' : ''}>` : ''}
+      <span class="ing-name">${esc(c.alias || c.name)}${q ? ` <span class="ing-note">${esc(q)}</span>` : ''}</span>
+    </li>`);
   }
 
   const method = (recipe.sections || []).map((sec) => {
@@ -847,7 +859,7 @@ function sourceLine(e) {
     } else out.push(`Source: ${esc(src)}`);
   }
   if (e.fm.author) out.push(`By ${esc(e.fm.author)}`);
-  return out.length ? `<p class="source">${out.join('<br>')}</p>` : '';
+  return out.length ? `<p class="source">${out.join(' <span aria-hidden="true">·</span> ')}</p>` : '';
 }
 
 async function showRecipe(rawPath, params) {
@@ -891,7 +903,6 @@ async function showRecipe(rawPath, params) {
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
             ${S.shop && S.live === 'on' ? `<button class="btn btn-primary btn-sm add-list" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}<span>Add to shopping list</span></button>` : ''}
-            ${'wakeLock' in navigator ? '<button class="btn btn-quiet btn-sm" id="wake" aria-pressed="false">Keep screen on</button>' : ''}
             ${canEdit ? `<a class="btn btn-quiet btn-sm" href="#/edit/${encPath(path)}">Edit</a>` : ''}
           </div>
         </div>
@@ -955,9 +966,6 @@ async function showRecipe(rawPath, params) {
       b.onclick = () => startTimer(Number(b.dataset.secs), b.dataset.label, e.title);
     });
   };
-
-  const wake = $('#wake');
-  if (wake) wake.onclick = () => toggleWakeLock(wake);
 
   const addList = $('#add-list');
   if (addList) addList.onclick = async () => {
@@ -1428,26 +1436,6 @@ async function editConf(kind, change) {
     return false;
   }
 }
-
-// ---------------------------------------------------------------- wake lock
-
-let wakeLock = null;
-async function toggleWakeLock(btn) {
-  if (wakeLock) { stopWakeLock(); return; }
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-    btn.setAttribute('aria-pressed', 'true');
-    btn.textContent = 'Screen stays on';
-    wakeLock.addEventListener('release', () => {
-      wakeLock = null;
-      btn.setAttribute('aria-pressed', 'false');
-      btn.textContent = 'Keep screen on';
-    });
-  } catch {
-    toast('This browser could not keep the screen on.');
-  }
-}
-function stopWakeLock() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
 
 // ---------------------------------------------------------------- timers
 

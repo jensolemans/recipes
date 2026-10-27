@@ -186,8 +186,8 @@ const newPage = async (opts = {}) => {
   ok((await page.textContent('#place')).includes('Breakfast'), 'the folder button says where you are');
   await page.click('#place');
   await page.click('#browse [data-pick="05 Mains/Pasta"]');
-  const where = await page.$$eval('.card-where', (els) => [...new Set(els.map((e) => e.textContent))]);
-  ok(where.length === 1 && where[0] === 'Mains / Pasta', `picking Pasta under Mains shows only pasta (${where.join(', ')})`);
+  const where = await page.$$eval('.card', (els) => [...new Set(els.map((a) => decodeURIComponent(a.getAttribute('href')).split('/').slice(2, -1).join('/')))]);
+  ok(where.length === 1 && where[0] === '05 Mains/Pasta', `picking Pasta under Mains shows only pasta (${where.join(', ')})`);
   await page.click('#place');
   ok(await page.$eval('#browse [data-pick="05 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'the panel opens with the current folder marked');
   const hasRecipes = (d) => fs.readdirSync(d, { withFileTypes: true }).some((x) => (x.isDirectory() ? hasRecipes(path.join(d, x.name)) : x.name.endsWith('.cook')));
