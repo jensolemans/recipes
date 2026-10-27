@@ -22,11 +22,6 @@ Mostly front end, quick wins, used every week.
   any phone. Links and text keep the current scale. Plus a print layout:
   one page, no top bar or side panel, ingredients beside the method, at the
   current scale. *Paprika, Mela, Mealie, NYT Cooking.*
-- [ ] **Notes, rating and cook log.** Stars, "cooked on" dates and personal
-  notes per recipe, for Jens only. Adds sorting by most cooked and by not
-  made in a while. *Paprika, Mealie, NYT Cooking, Mela.* Stored in Drive as
-  `config/recipe_notes.json`, keyed by recipe path, moved along when a
-  recipe is moved.
 
 ## Then
 
@@ -62,8 +57,7 @@ The planning features, built the same way as the shopping list.
 - [ ] **Search by ingredient.** "What can I make with leek and feta", with
   "without" for things to leave out. *Mealie, Samsung Food, Paprika.* The
   parsed recipes already list their ingredients.
-- [ ] **What to cook tonight.** A random pick within the current filters, or
-  from recipes not cooked in a while (uses the cook log).
+- [ ] **What to cook tonight.** A random pick within the current filters.
   *Paprika, Mela, Samsung Food.*
 
 ## After that
