@@ -416,14 +416,28 @@ body:has(.sheet[open]) { overflow: hidden; }
 a.mark:hover { box-shadow: inset 0 -2px var(--accent); }
 .tool { font-family: var(--display); font-size: .86em; font-weight: 500; }
 .qty { font-weight: 600; }
+/* timers in the method: a quiet grey pill, the clock becomes a ring that empties while it runs */
 .timer-chip {
-  display: inline-flex; align-items: center; gap: 5px; font-family: var(--display); font-size: .8em; font-weight: 600;
-  border: 1px solid var(--ink); color: var(--ink); background: none; border-radius: 999px; padding: 1px 10px;
-  vertical-align: .08em; cursor: pointer; line-height: 1.5;
+  display: inline-flex; align-items: center; gap: .3em; font-family: var(--display); font-size: .8em; font-weight: 600;
+  border: 0; color: var(--ink); background: var(--soft); border-radius: 999px; padding: .05em .6em;
+  vertical-align: .06em; cursor: pointer; line-height: 1.5; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+button.timer-chip { padding-left: .45em; }
 span.timer-chip { cursor: default; }
-button.timer-chip:hover { background: var(--strong); color: var(--on-strong); }
-.timer-chip svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+button.timer-chip:hover { background: var(--line); }
+.timer-chip svg { width: 1em; height: 1em; flex: none; fill: none; stroke-width: 2; }
+.tc-clock { stroke: var(--muted); stroke-linecap: round; }
+/* mirrored so the empty part sweeps clockwise from twelve, like a clock hand */
+.tc-ring { display: none; transform: rotate(-90deg) scaleY(-1); stroke-width: 3.2; }
+.tc-check { display: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.6; }
+.tc-track { stroke: var(--line); }
+.tc-left { stroke: var(--ink); stroke-linecap: round; }
+.timer-chip.is-running .tc-clock { display: none; }
+.timer-chip.is-running .tc-ring { display: block; }
+.timer-chip.is-paused .tc-left { stroke: var(--muted); }
+.timer-chip.is-done .tc-ring { display: none; }
+.timer-chip.is-done .tc-check { display: block; stroke: currentColor; }
+.timer-chip.is-done, button.timer-chip.is-done:hover { background: var(--accent); color: var(--on-accent); }
 
 /* ---------- timers ---------- */
 .timers {
@@ -434,7 +448,14 @@ button.timer-chip:hover { background: var(--strong); color: var(--on-strong); }
   display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px;
   background: var(--ink); color: var(--paper); box-shadow: var(--shadow);
 }
-.timer .link-btn { color: inherit; opacity: .75; }
+.timer-btn {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: color-mix(in srgb, currentColor 14%, transparent); color: inherit;
+}
+.timer-btn:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
+.timer-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.timer-btn .fill { fill: currentColor; stroke: none; }
+.timer { gap: 10px; }
 .timer-label { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; display: flex; flex-direction: column; }
 .timer-label small { font-weight: 400; opacity: .7; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timer-clock { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }

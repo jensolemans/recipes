@@ -104,8 +104,9 @@ folders use the same files.
 - Design: minimal and neutral, white and black (#FAFAFA / #0E0E0E pages).
   The Cooklang orange (#E77B54) is used sparingly, only where an accent helps:
   the full-height ingredient highlighter in method steps, the current folder in the folder panel, focus
-  rings and a finished timer. Buttons and selected chips are black (white in
-  dark). Keep it that way unless asked; colours are CSS variables in
+  rings and a finished timer. Running timers stay black, white and grey: a grey pill with a clock in
+  the method, whose clock becomes a ring that empties while it runs. Buttons and selected chips are
+  black (white in dark). Keep it that way unless asked; colours are CSS variables in
   `app/style.css`. The top bar toggle switches light and dark; it starts from
   the device setting (dark when there is none) and a pick is saved per device.
 - Keep the site dependency-free and static so it stays free to host.

@@ -828,7 +828,7 @@ function stepItem(it, recipe, interactive) {
       const label = fmtQuantity(t.quantity) || t.name || 'timer';
       const secs = timerSeconds(t.quantity);
       if (!interactive || !secs) return `<span class="timer-chip">${esc(label)}</span>`;
-      return `<button class="timer-chip" data-secs="${secs}" data-label="${esc(t.name || label)}" title="Start a ${esc(label)} timer"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="9" r="5.5"/><path d="M8 9V6.5M6.5 1.5h3"/></svg>${esc(label)}</button>`;
+      return `<button class="timer-chip" data-secs="${secs}" data-timer="${it.index}" data-text="${esc(label)}" data-label="${esc(t.name || label)}" title="Start a ${esc(label)} timer"><svg class="tc-clock" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.5" r="8"/><path d="M12 13.5V9.5M10 2.5h4"/></svg><svg class="tc-ring" viewBox="0 0 24 24" aria-hidden="true"><circle class="tc-track" cx="12" cy="12" r="9"/><circle class="tc-left" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="100 100"/></svg><svg class="tc-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="tc-text">${esc(label)}</span></button>`;
     }
     case 'inlineQuantity': {
       const q = recipe.inline_quantities?.[it.index];
@@ -967,9 +967,7 @@ async function showRecipe(rawPath, params) {
         li.classList.toggle('is-done');
       });
     });
-    $$('#body .timer-chip[data-secs]').forEach((b) => {
-      b.onclick = () => startTimer(Number(b.dataset.secs), b.dataset.label, e.title);
-    });
+    wireTimerChips($('#body'), e.path, e.title);
   };
 
   const addList = $('#add-list');
@@ -1315,9 +1313,7 @@ async function showCook(rawPath, params) {
       box.onchange = set;
       row.onclick = (ev) => { if (ev.target === box) return; box.checked = !box.checked; set(); };
     });
-    $$('.timer-chip[data-secs]', stage).forEach((b) => {
-      b.onclick = () => startTimer(Number(b.dataset.secs), b.dataset.label, `${e.title}, step ${at}`);
-    });
+    wireTimerChips(stage, e.path, `${e.title}, step ${at}`);
     $$('.cf-done, .cf-next', stage).forEach((li) => { li.onclick = () => go2(Number(li.dataset.at)); });
     $$('.cb-pill', foot).forEach((b) => { b.onclick = () => { const n = Number(b.dataset.at); go2(n, Math.sign(n - at)); }; });
     const prev = $('#cook-prev');
@@ -1809,8 +1805,8 @@ async function editConf(kind, change) {
 const timers = [];
 let timerTick = null;
 
-function startTimer(secs, label, recipeTitle) {
-  timers.push({ id: Math.random().toString(36).slice(2), label, recipeTitle, end: Date.now() + secs * 1000, total: secs, paused: null, done: false });
+function startTimer(secs, label, recipeTitle, key = null) {
+  timers.push({ id: Math.random().toString(36).slice(2), key, label, recipeTitle, end: Date.now() + secs * 1000, total: secs, paused: null, done: false });
   try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { /* ignore */ }
   renderTimers();
   if (!timerTick) timerTick = setInterval(renderTimers, 500);
@@ -1822,9 +1818,15 @@ function fmtClock(s) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+let audio = null;
+let lastBeep = 0;
+
 function beep() {
+  lastBeep = Date.now();
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audio;
+    if (ctx.state === 'suspended') ctx.resume();
     [0, 0.35, 0.7].forEach((t) => {
       const o = ctx.createOscillator(), g = ctx.createGain();
       o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
@@ -1857,13 +1859,19 @@ function renderTimers() {
       if (document.hidden) notify('Timer done', `${t.label} for ${t.recipeTitle}`);
     }
   }
+  // Keeps ringing until every finished timer is dismissed.
+  if (timers.some((t) => t.done) && now - lastBeep > 2000) beep();
   el.innerHTML = timers.map((t) => {
     const left = t.paused != null ? t.paused : (t.end - now) / 1000;
     return `<div class="timer ${t.done ? 'is-done' : ''}" data-id="${t.id}">
       <span class="timer-label">${esc(t.label)}<small>${esc(t.recipeTitle)}</small></span>
       <span class="timer-clock">${t.done ? 'Done' : fmtClock(left)}</span>
-      ${t.done ? '' : `<button class="link-btn" data-act="pause">${t.paused != null ? 'Resume' : 'Pause'}</button>`}
-      <button class="link-btn" data-act="close">${t.done ? 'Dismiss' : 'Cancel'}</button>
+      ${t.done ? '' : t.paused != null
+        ? `<button class="timer-btn" data-act="pause" aria-label="Resume" title="Resume"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="fill" d="M8 5.5v13l10.5-6.5z"/></svg></button>`
+        : `<button class="timer-btn" data-act="pause" aria-label="Pause" title="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="fill" x="6.5" y="5.5" width="3.8" height="13" rx="1"/><rect class="fill" x="13.7" y="5.5" width="3.8" height="13" rx="1"/></svg></button>`}
+      <button class="timer-btn" data-act="close" aria-label="${t.done ? 'Dismiss' : 'Cancel'}" title="${t.done ? 'Dismiss' : 'Cancel'}">${t.done
+        ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+        : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg>'}</button>
     </div>`;
   }).join('');
   $$('.timer', el).forEach((row) => {
@@ -1877,7 +1885,42 @@ function renderTimers() {
       };
     });
   });
+  syncTimerChips();
   if (!timers.length && timerTick) { clearInterval(timerTick); timerTick = null; }
+}
+
+// A timer in the method starts once; tapping it again pauses or resumes it, and after it
+// is done a tap starts it fresh.
+function wireTimerChips(root, path, recipeTitle) {
+  $$('.timer-chip[data-secs]', root).forEach((b) => {
+    b.dataset.key = `${path}#${b.dataset.timer}`;
+    b.onclick = () => {
+      const t = timers.find((x) => x.key === b.dataset.key);
+      if (t && !t.done) {
+        if (t.paused != null) { t.end = Date.now() + t.paused * 1000; t.paused = null; }
+        else t.paused = (t.end - Date.now()) / 1000;
+        renderTimers();
+        return;
+      }
+      if (t) timers.splice(timers.indexOf(t), 1);
+      startTimer(Number(b.dataset.secs), b.dataset.label, recipeTitle, b.dataset.key);
+    };
+  });
+  syncTimerChips();
+}
+
+function syncTimerChips() {
+  const now = Date.now();
+  $$('.timer-chip[data-key]').forEach((b) => {
+    const t = timers.find((x) => x.key === b.dataset.key);
+    const left = t ? (t.done ? 0 : t.paused != null ? t.paused : (t.end - now) / 1000) : 0;
+    b.classList.toggle('is-running', !!t);
+    b.classList.toggle('is-paused', !!t && t.paused != null);
+    b.classList.toggle('is-done', !!t && t.done);
+    b.querySelector('.tc-left').setAttribute('stroke-dasharray', `${t ? Math.max(0, Math.min(100, (left / t.total) * 100)).toFixed(1) : 100} 100`);
+    b.querySelector('.tc-text').textContent = !t ? b.dataset.text : t.done ? 'Done' : fmtClock(left);
+    b.title = !t ? `Start a ${b.dataset.text} timer` : t.done ? 'Start again' : t.paused != null ? 'Resume timer' : 'Pause timer';
+  });
 }
 
 // ---------------------------------------------------------------- editor
