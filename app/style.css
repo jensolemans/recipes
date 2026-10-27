@@ -834,3 +834,54 @@ body[data-view="cook"] .timers { bottom: calc(var(--cook-foot, 120px) + 8px); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* ---------- print ---------- */
+/* One recipe on paper: black on white whatever the theme, ingredients beside
+   the method, at the scale on screen. Nothing to tap, so no buttons or ticks. */
+.print-only { display: none; }
+@media print {
+  @page { size: auto; margin: 14mm 14mm 16mm; }
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --paper: #fff; --card: #fff; --ink: #000; --muted: #555; --line: #ccc; --soft: #fff; --strong: #000;
+    color-scheme: light;
+  }
+  body { background: #fff; color: #000; font-size: 10.5pt; min-height: 0; display: block; }
+  .topbar, .foot, .side, .tabbar, .timers, .toast, .modal, .skip, .crumbs, .recipe-actions, .tags, .tick { display: none !important; }
+  main { max-width: none; padding: 0; }
+  .print-only { display: block; }
+
+  .recipe-top, .recipe-top.has-img { display: block; }
+  .hero { float: right; width: 52mm; aspect-ratio: 4 / 3; margin: 0 0 4mm 6mm; border-radius: 2mm; }
+  .recipe-head h1 { font-size: 24pt; margin: 0 0 3mm; }
+  .lede { font-size: 11.5pt; margin: 0 0 4mm; }
+  .facts { gap: 2mm 7mm; margin: 0 0 3mm; }
+  .facts dt { font-size: 8pt; }
+  .facts dd { font-size: 10pt; }
+  .print-size { font-weight: 700; margin: 0 0 2mm; }
+  .source { font-size: 9pt; margin: 0; }
+  .source a { text-decoration: none; }
+
+  .recipe-body, .preview-head + .recipe-body { clear: both; display: grid; grid-template-columns: 58mm minmax(0, 1fr); gap: 8mm; margin-top: 7mm; }
+  .recipe-body h2 { font-size: 13pt; margin: 0 0 2mm; }
+  .ingredients { position: static; max-height: none; overflow: visible; }
+  .ing-row, .preview-head + .recipe-body .ing-row { grid-template-columns: 17mm minmax(0, 1fr); gap: 2mm; padding: 1.2mm 0; font-size: 9.5pt; break-inside: avoid; }
+  .ing-note { font-size: 8.5pt; }
+  .ing-name a { text-decoration: none; }
+  .ing-row.is-checked .ing-qty, .ing-row.is-checked .ing-name { opacity: 1; text-decoration: none; }
+  .tools-h { margin-top: 6mm !important; }
+  .tool-list .tool-row { display: block; }
+
+  .method { max-width: none; }
+  .section-name { font-size: 11pt; margin: 5mm 0 1mm; break-after: avoid; }
+  .step { grid-template-columns: 6mm minmax(0, 1fr); gap: 2mm; padding: 1.8mm 0; break-inside: avoid; }
+  .step-n { font-size: 11pt; }
+  .step p { font-size: 11pt; line-height: 1.45; }
+  .step.is-done p, .step.is-done .step-n { opacity: 1; }
+  .note { font-size: 10pt; margin: 2mm 0; }
+  /* ink-friendly: ingredients in bold instead of a highlighter, timers as plain text */
+  .mark { background: none; padding: 0; font-weight: 600; }
+  .timer-chip, button.timer-chip { background: none; padding: 0; font-size: .9em; font-weight: 700; vertical-align: baseline; }
+  .timer-chip svg { display: none; }
+
+  .print-foot { margin: 8mm 0 0; padding-top: 2mm; border-top: 1px solid var(--line); font-size: 8pt; color: var(--muted); }
+}

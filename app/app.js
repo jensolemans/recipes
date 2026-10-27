@@ -903,16 +903,20 @@ async function showRecipe(rawPath, params) {
           <dl class="facts" id="facts"></dl>
           ${e.tags.length ? `<p class="tags">${e.tags.map((t) => `<span>${esc(t)}</span>`).join('')}</p>` : ''}
           ${sourceLine(e)}
+          <p class="print-only print-size" id="print-size"></p>
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
             <a class="btn btn-primary icon-btn" id="cook-btn" href="#/cook/${encPath(path)}" title="Cook mode" aria-label="Cook mode">${CHEF_ICON}</a>
             ${S.shop && S.live === 'on' ? `<button class="btn btn-quiet icon-btn" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}</button>` : ''}
+            <button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>
             ${canEdit ? `<a class="btn btn-quiet icon-btn" href="#/edit/${encPath(path)}" title="Edit" aria-label="Edit">${PEN_ICON}</a>` : ''}
           </div>
         </div>
       </div>
       <div class="recipe-body" id="body"></div>
+      <p class="print-only print-foot" id="print-foot"></p>
     </article>`;
+  $('#print-btn').onclick = () => window.print();
 
   $$('.crumbs a[data-ch]').forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); S.filters.chapter = a.dataset.ch; S.filters.sub = a.dataset.sub; go('#/'); };
@@ -931,6 +935,9 @@ async function showRecipe(rawPath, params) {
     const h = `#/r/${encPath(path)}${q.toString() ? '?' + q : ''}`;
     if (location.hash !== h) { history.replaceState(null, '', h); S.currentHash = h; }
     $('#cook-btn').href = `#/cook/${encPath(path)}${q.toString() ? '?' + q : ''}`;
+    // Paper has no scaler, so the printout says the size and where it came from.
+    $('#print-size').textContent = base ? `Serves ${servings}` : mult !== 1 ? `${mult}× the recipe` : '';
+    $('#print-foot').textContent = decodeURI(location.href).replace(/^https?:\/\//, '');
   };
 
   const drawScaler = () => {
@@ -1011,6 +1018,7 @@ const CARDS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7.5" y=
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 const LEFT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const RIGHT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const PRINT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4.5h10V9"/><path d="M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17"/><rect x="7" y="14" width="10" height="5.5" rx="1"/></svg>';
 const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 // A step as plain text, for the one-line previews in the scroll view.
