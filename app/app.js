@@ -814,7 +814,7 @@ function stepItem(it, recipe, interactive) {
       if (!ing) return '';
       const q = fmtQuantity(ing.quantity);
       const target = refPath(ing);
-      const inner = `${esc(ingName(ing))}${q ? ` <b>${esc(q)}</b>` : ''}`;
+      const inner = `${q ? `<b>${esc(q)}</b> ` : ''}${esc(ingName(ing))}`;
       if (target && S.recipes.has(target)) return `<a class="mark" href="#/r/${encPath(target)}">${inner}</a>`;
       return `<span class="mark">${inner}</span>`;
     }
