@@ -30,6 +30,11 @@ folders use the same files.
     The parser runs with `load_units = false` so units stay exactly as written
     (no conversion to cups). Scaling is `parser.parse(src, factor)`, which
     respects fixed quantities like `@salt{=1%tsp}`.
+  - Share: the recipe page's share button opens a bottom sheet on phones
+    (share link, copy ingredients, share the whole recipe as plain text)
+    and a centred card with a QR code on bigger screens. The link carries
+    the scale, so all of it opens at the current servings. `qr.js` is a
+    small hand-written QR code maker (byte mode, level M).
   - `drive.js`: Google sign-in (Google Identity Services token flow, scope
     `drive`) and Drive REST calls. Runs in the browser with the user's token.
   - `shopping.js`: the signed-in shopping list (`#/list`). Stored in Drive as
@@ -91,6 +96,9 @@ folders use the same files.
 - Never write to the real Drive folder while testing; the tests use the fake.
 - `ROADMAP.md` lists the features still to build, in order. Tick an item off
   in the same commit that ships it.
+- `ISSUES.md` is Jens's own list of bugs and annoyances to fix later. Jens
+  edits it by hand; only change it when asked, or to tick off an issue in
+  the commit that fixes it.
 - Pushing to `main` publishes the site within about a minute. Do larger
   changes on a branch first.
 

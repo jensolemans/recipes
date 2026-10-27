@@ -15,10 +15,13 @@ Mostly front end, quick wins, used every week.
   step's ingredients and timers shown alongside. Swipe or tap to move on.
   Keeps the screen on by itself. *Crouton, Mela, Samsung Food, Cooklang.*
   Steps already know their ingredients, so this is mainly a new view.
-- [ ] **Share and print.** A share button (Web Share API, copy link as
-  fallback) and a print layout: one page, no top bar or side panel,
-  ingredients beside the method, at the current scale.
-  *Paprika, Mela, Mealie, NYT Cooking.*
+- [x] **Share and print.** A share button between print and edit. On phones a
+  menu: share link, copy ingredients (plain text bullets), share the whole
+  recipe as plain text, each through the system share sheet. On bigger
+  screens a card with the same options and a QR code to open the recipe on
+  any phone. Links and text keep the current scale. Plus a print layout:
+  one page, no top bar or side panel, ingredients beside the method, at the
+  current scale. *Paprika, Mela, Mealie, NYT Cooking.*
 - [ ] **Notes, rating and cook log.** Stars, "cooked on" dates and personal
   notes per recipe, for Jens only. Adds sorting by most cooked and by not
   made in a while. *Paprika, Mealie, NYT Cooking, Mela.* Stored in Drive as
@@ -87,7 +90,13 @@ Useful, but lower priority.
   *Crouton, Samsung Food.*
 - [ ] **Export.** All recipes as a zip, or a printable PDF cookbook.
   *Mealie, Paprika.*
-- [ ] **QR code per recipe** for sharing in the kitchen or with guests.
+- [ ] **Easier sharing with friends.** Send a recipe so it lands well on the
+  other side: the `.cook` file with its photo (two files through the share
+  sheet on phones, a zip on bigger screens) for friends who use Cooklang,
+  and link previews that show the recipe's photo and title in chats (needs
+  a small page per recipe from build.py, since `#/r/...` never reaches the
+  server). Needs more groundwork first: how a friend gets the files into
+  their own app.
 - [ ] **Friends' favourites and notes.** Friends keep their own favourites in
   their browser, without editing rights. *NYT Cooking, Samsung Food.*
 - [ ] **"I made this" notes from friends.** Comments on recipes, which needs a

@@ -12,7 +12,7 @@
 // version at once, and the page offers a reload.
 const CACHE = 'recipes-dev';
 const SITE = [
-  './', 'index.html', 'style.css', 'app.js', 'cooklang.js', 'drive.js', 'shopping.js',
+  './', 'index.html', 'style.css', 'app.js', 'cooklang.js', 'drive.js', 'shopping.js', 'qr.js',
   'icon.svg', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
   'vendor/cooklang/cooklang_wasm_bg.js', 'vendor/cooklang/cooklang_wasm_bg.wasm',
   'fonts/bricolage-grotesque-latin-opsz-normal.woff2', 'fonts/bricolage-grotesque-latin-ext-opsz-normal.woff2',
