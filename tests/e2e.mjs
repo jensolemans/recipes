@@ -43,7 +43,7 @@ const pub = (f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, parents: f.p
 const byName = (parent, name) => [...files.values()].find((f) => f.parents.includes(parent) && f.name === name && !f.trashed);
 
 // Change one recipe in "Drive" so the live sync has something to pick up.
-const crepesFolder = byName('ROOT', '1 Breakfast').id;
+const crepesFolder = byName('ROOT', '01 Breakfast').id;
 const crepes = byName(crepesFolder, 'crepes.cook');
 crepes.content = Buffer.from(crepes.content.toString().replace('title: Crêpes', 'title: Crêpes (from Drive)'));
 
@@ -147,7 +147,7 @@ const newPage = async (opts = {}) => {
 // 2. scaling
 {
   const page = await newPage();
-  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('.ing-row');
   const qty = async (name) => page.$eval(`.ing-list`, (ul, n) => [...ul.querySelectorAll('.ing-row')].find((r) => r.querySelector('.ing-name').textContent.trim().startsWith(n))?.querySelector('.ing-qty').textContent, name);
   ok(await qty('whole milk') === '500 ml', 'crepes: 500 ml milk at 4 servings');
@@ -180,19 +180,19 @@ const newPage = async (opts = {}) => {
   await page.fill('#q', '');
   await page.waitForTimeout(300);
   await page.click('#place');
-  await page.click('#browse [data-pick="1 Breakfast"]');
+  await page.click('#browse [data-pick="01 Breakfast"]');
   ok((await page.$$('.card')).length === 5, 'Breakfast folder shows 5');
   ok(!(await page.$eval('#browse', (d) => d.open)), 'picking a folder closes the panel');
   ok((await page.textContent('#place')).includes('Breakfast'), 'the folder button says where you are');
   await page.click('#place');
-  await page.click('#browse [data-pick="3 Mains/Pasta"]');
+  await page.click('#browse [data-pick="05 Mains/Pasta"]');
   const where = await page.$$eval('.card-where', (els) => [...new Set(els.map((e) => e.textContent))]);
   ok(where.length === 1 && where[0] === 'Mains / Pasta', `picking Pasta under Mains shows only pasta (${where.join(', ')})`);
   await page.click('#place');
-  ok(await page.$eval('#browse [data-pick="3 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'the panel opens with the current folder marked');
+  ok(await page.$eval('#browse [data-pick="05 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'the panel opens with the current folder marked');
   const hasRecipes = (d) => fs.readdirSync(d, { withFileTypes: true }).some((x) => (x.isDirectory() ? hasRecipes(path.join(d, x.name)) : x.name.endsWith('.cook')));
-  const mainsSubs = fs.readdirSync(path.join(RECIPES, '3 Mains'), { withFileTypes: true }).filter((x) => x.isDirectory() && hasRecipes(path.join(RECIPES, '3 Mains', x.name))).length;
-  const subs = await page.$$eval('#browse .tree-leaf[data-pick^="3 Mains/"]', (els) => els.length);
+  const mainsSubs = fs.readdirSync(path.join(RECIPES, '05 Mains'), { withFileTypes: true }).filter((x) => x.isDirectory() && hasRecipes(path.join(RECIPES, '05 Mains', x.name))).length;
+  const subs = await page.$$eval('#browse .tree-leaf[data-pick^="05 Mains/"]', (els) => els.length);
   ok(subs === mainsSubs, `on desktop every subfolder of Mains is listed (${subs} of ${mainsSubs})`);
   await page.click('#browse [data-pick=""]');
   const total = (await page.$$('.card')).length;
@@ -207,7 +207,7 @@ const newPage = async (opts = {}) => {
 // 4. mobile layout has no horizontal scroll
 {
   const page = await newPage({ viewport: { width: 375, height: 800 } });
-  for (const h of ['#/', '#/r/3%20Mains/Pasta/lasagna']) {
+  for (const h of ['#/', '#/r/05%20Mains/Pasta/lasagna']) {
     await page.goto(`${BASE}/${h}`);
     await page.waitForTimeout(800);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -216,13 +216,13 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/`);
   await page.click('#place');
   ok(await page.$eval('#browse', (d) => !d.querySelector('.opt') && Boolean(d.querySelector('[data-tab="filters"]'))), 'on a phone the panel opens on the folders tab');
-  await page.click('#browse [data-open="3 Mains"]');
+  await page.click('#browse [data-open="05 Mains"]');
   ok((await page.textContent('#browse h2')).replace(/\s+/g, ' ').trim() === 'All recipes / Mains', 'a folder with subfolders opens, with the path on top');
-  await page.click('#browse [data-pick="3 Mains/Pasta"]');
+  await page.click('#browse [data-pick="05 Mains/Pasta"]');
   await page.click('#place');
-  ok(await page.$eval('#browse [data-pick="3 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'reopening shows the level you are on');
+  ok(await page.$eval('#browse [data-pick="05 Mains/Pasta"]', (b) => b.classList.contains('is-here')), 'reopening shows the level you are on');
   await page.click('#browse [data-up=""]');
-  ok(Boolean(await page.$('#browse [data-open="3 Mains"]')), 'tapping All recipes in the path goes back up');
+  ok(Boolean(await page.$('#browse [data-open="05 Mains"]')), 'tapping All recipes in the path goes back up');
   await page.click('#browse [data-tab="filters"]');
   ok(Boolean(await page.$('#browse .opt')) && Boolean(await page.$('#b-show')), 'and the filters tab has the filters');
   await page.close();
@@ -246,7 +246,7 @@ const newPage = async (opts = {}) => {
   ok(await page.isVisible('text=Crêpes (from Drive)'), 'change made in Drive shows up live');
 
   // edit crepes
-  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/edit/01%20Breakfast/crepes`);
   await page.waitForSelector('#src');
   const src = await page.inputValue('#src');
   await page.fill('#src', src.replace('@egg{3}', '@egg{4}'));
@@ -259,7 +259,7 @@ const newPage = async (opts = {}) => {
   ok(await page.$eval('.ing-list', (ul) => ul.textContent.includes('4')), 'recipe page shows the saved version');
 
   // conflict detection
-  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/edit/01%20Breakfast/crepes`);
   await page.waitForSelector('#src');
   byName(crepesFolder, 'crepes.cook').content = Buffer.from(saved + '\n> Edited on phone\n');
   await page.fill('#src', (await page.inputValue('#src')) + '\n> Edited on web\n');
@@ -279,7 +279,7 @@ const newPage = async (opts = {}) => {
   // new recipe with photo
   await page.goto(`${BASE}/#/new`);
   await page.waitForSelector('#src');
-  await page.selectOption('#folder', '7 Drinks');
+  await page.selectOption('#folder', '10 Drinks');
   await page.fill('#src', '---\ntitle: Test Spritz\nservings: 2\ntime: 5m\n---\n\nPour @prosecco{90%ml} over @ice{} in a #wine glass{}.\n');
   await page.waitForTimeout(400);
   ok(await page.inputValue('#file') === 'test_spritz', 'file name follows the title');
@@ -287,31 +287,31 @@ const newPage = async (opts = {}) => {
   await page.setInputFiles('#photo', { name: 'photo.png', mimeType: 'image/png', buffer: png });
   await page.waitForTimeout(500);
   await page.click('#save');
-  await page.waitForSelector('.recipe[data-path="7 Drinks/test_spritz"]');
-  const drinks = byName('ROOT', '7 Drinks').id;
+  await page.waitForSelector('.recipe[data-path="10 Drinks/test_spritz"]');
+  const drinks = byName('ROOT', '10 Drinks').id;
   ok(Boolean(byName(drinks, 'test_spritz.cook')), 'new recipe created in Drive');
   const photo = byName(drinks, 'test_spritz.jpg');
   ok(Boolean(photo) && photo.content[0] === 0xff && photo.content[1] === 0xd8, 'photo uploaded as JPEG next to it');
 
   // move + rename
-  await page.goto(`${BASE}/#/edit/7%20Drinks/test_spritz`);
+  await page.goto(`${BASE}/#/edit/10%20Drinks/test_spritz`);
   await page.waitForSelector('#src');
-  await page.selectOption('#folder', '5 Sauces and Basics');
+  await page.selectOption('#folder', '07 Basics');
   await page.fill('#file', 'spritz_test');
   await page.click('#save');
-  await page.waitForSelector('.recipe[data-path="5 Sauces and Basics/spritz_test"]');
-  const sauces = byName('ROOT', '5 Sauces and Basics').id;
+  await page.waitForSelector('.recipe[data-path="07 Basics/spritz_test"]');
+  const sauces = byName('ROOT', '07 Basics').id;
   ok(Boolean(byName(sauces, 'spritz_test.cook')) && Boolean(byName(sauces, 'spritz_test.jpg')), 'move and rename keeps the photo with the recipe');
 
   // delete
-  await page.goto(`${BASE}/#/edit/5%20Sauces%20and%20Basics/spritz_test`);
+  await page.goto(`${BASE}/#/edit/07%20Basics/spritz_test`);
   await page.waitForSelector('#del');
   await page.click('#del');
   await page.click('dialog button:has-text("Move to trash")');
   await page.waitForSelector('.home');
   ok(!byName(sauces, 'spritz_test.cook') && !byName(sauces, 'spritz_test.jpg'), 'delete moves recipe and photo to trash');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/live-home.png` });
-  await page.goto(`${BASE}/#/edit/3%20Mains/Curry/aloo_gobi`);
+  await page.goto(`${BASE}/#/edit/05%20Mains/Curry/aloo_gobi`);
   await page.waitForSelector('#preview .step');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/editor.png` });
   await ctx.close();
@@ -336,7 +336,7 @@ const newPage = async (opts = {}) => {
 
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/edit/01%20Breakfast/crepes`);
   await page.waitForSelector('#src', { timeout: 15000 });
   ok(await page.isVisible('a[href="#/new"]'), 'sign-in survives closing the tab');
 
@@ -391,11 +391,11 @@ const newPage = async (opts = {}) => {
   const qtyOf = async (name) => (await row(name).locator('.ing-qty').textContent()).trim();
   const sync = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 
-  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('#add-list', { timeout: 15000 });
   await page.click('#add-list');
   ok((await page.textContent('#toast')).includes('Added Crêpes'), 'adding a recipe says so');
-  await page.goto(`${BASE}/#/r/3%20Mains/Pasta/lasagna?s=4`);
+  await page.goto(`${BASE}/#/r/05%20Mains/Pasta/lasagna?s=4`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
   ok(await until(() => listJson().recipes.length === 2, 'list file'), 'list file created in Drive config folder with both recipes');
@@ -504,12 +504,12 @@ const newPage = async (opts = {}) => {
   ok(await until(() => !listJson().recipes.length && !listJson().items.length, 'clear all'), 'Clear shopping list empties it');
   await page.waitForSelector('.shop-empty');
 
-  // phone: the add button sits just above the tab bar, the editor hides the bar
-  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  // phone: the add button is a round basket next to the servings, the editor hides the bar
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('#add-list');
   const add = await page.$eval('#add-list', (b) => b.getBoundingClientRect().toJSON());
-  const bar = await page.$eval('#tabbar', (t) => t.getBoundingClientRect().top);
-  ok(add.bottom <= bar && bar - add.bottom < 20 && add.width > 300, 'on a recipe, a wide Add to shopping list sits just above the tab bar');
+  const scaler = await page.$eval('#scaler', (s) => s.getBoundingClientRect().toJSON());
+  ok(add.width < 60 && Math.abs(add.top - scaler.top) < 10, 'on a recipe, Add to shopping list is a basket next to the servings');
   ok(await page.$eval('#tabbar .tab[aria-current]', (t) => t.textContent.trim()) === 'Recipes', 'Recipes is selected on a recipe');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/tabbar-recipe.png` });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -524,7 +524,7 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('#tabbar .tab');
 
   // a recipe in parts asks which parts to shop for
-  await page.goto(`${BASE}/#/r/3%20Mains/Meat/swedish_meatballs`);
+  await page.goto(`${BASE}/#/r/05%20Mains/Meat/swedish_meatballs`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
   await page.waitForSelector('dialog[open] .parts-list');
@@ -542,7 +542,7 @@ const newPage = async (opts = {}) => {
   await page.click('.seg [data-view="recipe"]');
   ok((await page.textContent('.shop-parts')) === 'Only Meatballs and browning', 'by recipe says which parts');
   await page.goBack();
-  await page.goto(`${BASE}/#/r/3%20Mains/Meat/swedish_meatballs`);
+  await page.goto(`${BASE}/#/r/05%20Mains/Meat/swedish_meatballs`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
   await page.waitForSelector('dialog[open] .parts-list');
@@ -561,7 +561,7 @@ const newPage = async (opts = {}) => {
 // 8. friends who are not signed in see no shopping list
 {
   const page = await newPage();
-  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('.ing-row');
   ok(!(await page.isVisible('#add-list')) && !(await page.isVisible('.icon-link')), 'no shopping list without signing in');
   await page.goto(`${BASE}/#/list`);
@@ -591,7 +591,7 @@ const newPage = async (opts = {}) => {
   ok(await page.isVisible('#rail') && !(await page.isVisible('.account .icon-link')), 'closed list is a rail on the right, not a top bar icon');
   await shot('panel-rail');
 
-  await page.goto(`${BASE}/#/r/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
   await page.waitForSelector('.side .shop-row');
@@ -607,7 +607,7 @@ const newPage = async (opts = {}) => {
 
   await page.click('#side-close');
   await page.waitForSelector('#rail');
-  await page.goto(`${BASE}/#/r/3%20Mains/Pasta/lasagna`);
+  await page.goto(`${BASE}/#/r/05%20Mains/Pasta/lasagna`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
   await page.waitForTimeout(400);
@@ -636,7 +636,7 @@ const newPage = async (opts = {}) => {
   await shot('panel-open-dark');
   await page.emulateMedia({ colorScheme: 'light' });
 
-  await page.goto(`${BASE}/#/edit/1%20Breakfast/crepes`);
+  await page.goto(`${BASE}/#/edit/01%20Breakfast/crepes`);
   await page.waitForSelector('#src');
   ok(await page.isVisible('#rail') && !(await page.isVisible('.side .shop-panel')), 'the editor keeps it as a rail');
   await page.click('a.link-btn:has-text("Cancel")');
@@ -686,7 +686,7 @@ const newPage = async (opts = {}) => {
   const src = await page.inputValue('#src');
   ok(src.startsWith('---') && src.includes('@chicken thighs') && !src.includes('Conversion notes') && !src.includes('```'), 'pasting Claude\'s reply keeps only the recipe');
   ok((await page.textContent('#toast')).includes("Took the recipe out of Claude's reply"), 'and says so');
-  ok(await page.inputValue('#folder') === '3 Mains/Curry', `the category follows the course and tags (${await page.inputValue('#folder')})`);
+  ok(await page.inputValue('#folder') === '05 Mains/Curry', `the category follows the course and tags (${await page.inputValue('#folder')})`);
   ok(await page.inputValue('#file') === 'chicken_tikka_test', 'the file name follows the title');
 
   await page.evaluate((b64) => {
@@ -711,14 +711,14 @@ const newPage = async (opts = {}) => {
   await page.click('#paste-recipe');
   await page.click('dialog button:has-text("Replace")');
   ok(await until2(page, () => page.inputValue('#src').then((v) => v.includes('title: Lentil Soup Test') && !v.includes('Chicken Tikka'))), 'Paste recipe replaces the text after asking');
-  ok(await page.inputValue('#folder') === '2 Starters and Soups' && await page.inputValue('#file') === 'lentil_soup_test', 'and the category and file name follow the new recipe');
+  ok(await page.inputValue('#folder') === '03 Soups' && await page.inputValue('#file') === 'lentil_soup_test', 'and the category and file name follow the new recipe');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/editor-paste.png` });
 
   await page.click('#save');
-  await page.waitForSelector('.recipe[data-path="2 Starters and Soups/lentil_soup_test"]', { timeout: 8000 });
-  const soups = byName('ROOT', '2 Starters and Soups').id;
+  await page.waitForSelector('.recipe[data-path="03 Soups/lentil_soup_test"]', { timeout: 8000 });
+  const soups = byName('ROOT', '03 Soups').id;
   ok(Boolean(byName(soups, 'lentil_soup_test.cook')) && Boolean(byName(soups, 'lentil_soup_test.jpg')), 'saving puts the recipe and its photo in the chosen category');
-  await page.goto(`${BASE}/#/edit/2%20Starters%20and%20Soups/lentil_soup_test`);
+  await page.goto(`${BASE}/#/edit/03%20Soups/lentil_soup_test`);
   await page.waitForSelector('#del');
   await page.click('#del');
   await page.click('dialog button:has-text("Move to trash")');
@@ -750,7 +750,7 @@ const newPage = async (opts = {}) => {
   await page.reload();
   await page.waitForSelector('.card', { timeout: 8000 });
   ok((await page.$$('.card')).length === online, `home opens without a connection (${online} recipes)`);
-  await page.evaluate(() => { location.hash = '#/r/3%20Mains/Pasta/lasagna?s=4'; });
+  await page.evaluate(() => { location.hash = '#/r/05%20Mains/Pasta/lasagna?s=4'; });
   ok(await page.waitForSelector('.recipe .step', { timeout: 8000 }).then(() => true, () => false), 'a recipe opens and scales without a connection');
   await ctx.close();
 }

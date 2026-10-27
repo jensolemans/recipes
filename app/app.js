@@ -55,7 +55,7 @@ const S = {
   live: 'off', // off | loading | on
   drive: null, // { folders: Map, files: Map }
   filters: { chapter: '', sub: '', q: '', course: new Set(), cuisine: new Set(), diet: new Set(), difficulty: new Set(), time: new Set(), tags: new Set() },
-  sort: saved.get('sort', 'name'),
+  sort: saved.get('sort', 'recent'),
   browse: { at: '', tab: 'folders' }, // phone browse sheet: folder being shown, open tab
   dirty: false,
   ignoreHash: false,
@@ -182,6 +182,7 @@ async function onHashChange() {
 
 function route() {
   S.currentHash = location.hash || '#/';
+  if (parseHash().path !== '/list') S.lastPage = S.currentHash; // where the full list goes back to
   renderAccount();
   stopWakeLock();
   stopListPolling();
@@ -412,13 +413,16 @@ async function loadConf(kind, f) {
 // ---------------------------------------------------------------- home
 
 const FACETS = [
-  ['course', 'Course'],
   ['diet', 'Diet'],
   ['difficulty', 'Difficulty'],
   ['time', 'Time'],
+  ['course', 'Course'],
   ['cuisine', 'Cuisine'],
   ['tags', 'Tags'],
 ];
+// Rarely used, so folded away until opened (or one of them is picked).
+const FOLDED_FACETS = new Set(['course', 'tags', 'cuisine']);
+const openFacets = new Set();
 const TIME_BUCKETS = ['30 min or less', '30 to 60 min', '1 to 2 hours', 'Over 2 hours'];
 const DIFFICULTY_ORDER = ['easy', 'medium', 'hard'];
 
@@ -461,7 +465,6 @@ function showHome() {
     <section class="home">
       <div class="home-head">
         <h1 class="home-title">${esc(title)}</h1>
-        <p class="home-count" id="count"></p>
       </div>
       <div class="searchrow">
         <label class="search">
@@ -472,6 +475,8 @@ function showHome() {
         <button class="place" id="place" aria-haspopup="dialog"></button>
         <label class="sort">
           <span class="sr">Sort</span>
+          <span class="sort-now" id="sort-now" aria-hidden="true"></span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
           <select id="sort">
             <option value="name">A to Z</option>
             <option value="time">Quickest first</option>
@@ -483,11 +488,15 @@ function showHome() {
       <div class="grid" id="grid"></div>
       <dialog class="sheet" id="browse" aria-label="Browse recipes"></dialog>
     </section>`;
+  // The pill shows the choice itself, so it is always as wide as its words;
+  // the real select lies invisibly on top of it.
+  const sortNow = () => { $('#sort-now').textContent = $('#sort').selectedOptions[0]?.textContent || ''; };
   $('#sort').value = S.sort;
+  sortNow();
   $('#place').onclick = openBrowse;
   $('#browse').onclick = (ev) => { if (ev.target === ev.currentTarget) ev.currentTarget.close(); };
   $('#q').addEventListener('input', debounce((ev) => { S.filters.q = ev.target.value; updateHome(); }, 120));
-  $('#sort').onchange = (ev) => { S.sort = ev.target.value; saved.set('sort', S.sort); updateHome(); };
+  $('#sort').onchange = (ev) => { S.sort = ev.target.value; saved.set('sort', S.sort); sortNow(); updateHome(); };
   updateHome();
 }
 
@@ -509,7 +518,6 @@ function updateHome() {
   else if (S.sort === 'recent') list.sort((a, b) => (b.modified || 0) - (a.modified || 0) || byName(a, b));
   else list.sort(byName);
 
-  $('#count').textContent = list.length === all.length ? `${all.length} recipes` : `${list.length} of ${all.length} recipes`;
   $('#grid').innerHTML = list.length ? list.map(card).join('') : `
     <div class="empty"><p>No recipes match.</p><button class="btn btn-quiet" id="clear2">Clear search and filters</button></div>`;
   if (!list.length) $('#clear2').onclick = clearFilters;
@@ -539,8 +547,13 @@ function facetsHTML(all) {
     else if (key === 'tags') vals.sort((a, b) => counts.get(b) - counts.get(a) || collator.compare(a, b));
     else vals.sort(collator.compare);
     if (!vals.length) return '';
-    return `<fieldset class="facet facet-${key}"><legend>${label}</legend><div class="facet-opts">${vals.map((v) => `
-      <button class="opt" data-key="${key}" data-val="${esc(v)}" aria-pressed="${f[key].has(v)}">${esc(cap(v))} <span>${counts.get(v)}</span></button>`).join('')}</div></fieldset>`;
+    const opts = `<div class="facet-opts">${vals.map((v) => `
+      <button class="opt" data-key="${key}" data-val="${esc(v)}" aria-pressed="${f[key].has(v)}">${esc(cap(v))} <span>${counts.get(v)}</span></button>`).join('')}</div>`;
+    if (FOLDED_FACETS.has(key)) {
+      const n = f[key].size;
+      return `<details class="facet facet-${key}" data-fold="${key}" ${n || openFacets.has(key) ? 'open' : ''}><summary>${label}${n ? ` <span>${n} on</span>` : ''}<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></summary>${opts}</details>`;
+    }
+    return `<fieldset class="facet facet-${key}"><legend>${label}</legend>${opts}</fieldset>`;
   }).join('');
 }
 
@@ -551,6 +564,9 @@ function bindFacets(el) {
       set.has(b.dataset.val) ? set.delete(b.dataset.val) : set.add(b.dataset.val);
       updateHome();
     };
+  });
+  $$('[data-fold]', el).forEach((d) => {
+    d.ontoggle = () => { d.open ? openFacets.add(d.dataset.fold) : openFacets.delete(d.dataset.fold); };
   });
 }
 
@@ -874,7 +890,7 @@ async function showRecipe(rawPath, params) {
           ${sourceLine(e)}
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
-            ${S.shop && S.live === 'on' ? '<button class="btn btn-primary btn-sm" id="add-list">Add to shopping list</button>' : ''}
+            ${S.shop && S.live === 'on' ? `<button class="btn btn-primary btn-sm add-list" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}<span>Add to shopping list</span></button>` : ''}
             ${'wakeLock' in navigator ? '<button class="btn btn-quiet btn-sm" id="wake" aria-pressed="false">Keep screen on</button>' : ''}
             ${canEdit ? `<a class="btn btn-quiet btn-sm" href="#/edit/${encPath(path)}">Edit</a>` : ''}
           </div>
@@ -1065,6 +1081,7 @@ async function mountList(root, panel) {
       <p class="shop-status" id="shop-status" aria-live="polite"></p>` : `<div class="shop-head">
         <h1>Shopping list</h1>
         <p class="shop-status" id="shop-status" aria-live="polite"></p>
+        <button class="icon-btn shop-to-side" id="to-side" title="Show beside the recipes (L)" aria-label="Show the shopping list beside the recipes">${SHRINK_ICON}</button>
       </div>`}
       <form class="shop-add" id="shop-add" autocomplete="off">
         <label class="sr" for="shop-new">Add an item</label>
@@ -1085,6 +1102,7 @@ async function mountList(root, panel) {
     </section>`;
 
   if (panel) $('#side-close', root).onclick = () => setSide('closed');
+  else $('#to-side', root).onclick = listToSide;
   $('#shop-add', root).onsubmit = (ev) => {
     ev.preventDefault();
     const input = $('#shop-new', root);
@@ -1137,11 +1155,19 @@ async function mountList(root, panel) {
 
 // ---------------------------------------------------------------- side panel (wide screens)
 
-// On a wide screen the list sits on the right: a slim rail when closed, a
-// panel beside the recipes when open, remembered per device. It is not shown
-// on the list page itself, and the editor keeps it closed for the space.
+// On a wide screen the list has three sizes: a slim rail, a panel beside the
+// recipes, or the whole page, with a button at the top of each to step
+// between them. Rail or panel is remembered per device; the editor keeps it
+// a rail for the space.
 const PANEL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15M9 10l2 2-2 2"/></svg>';
 const EXPAND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5l-6 6M4.5 19.5l6-6"/></svg>';
+const SHRINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 10H14V4.5M4.5 14H10v5.5M14 10l6-6M10 14l-6 6"/></svg>';
+
+/** From the full list page back to the panel beside the page you came from. */
+function listToSide() {
+  saved.set('sidePanel', 'open');
+  go(S.lastPage || '#/');
+}
 const wide = window.matchMedia('(min-width: 1100px)');
 
 function sideMode() {
@@ -1172,7 +1198,7 @@ function renderSide() {
   if (mode === 'off') { el.innerHTML = ''; return; }
   const n = toBuyCount();
   el.innerHTML = `<button class="rail" id="rail" title="Shopping list (L)" aria-label="Open the shopping list${n ? `, ${n} to buy` : ''}">
-    ${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>${PANEL_ICON}
+    ${PANEL_ICON}${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>
   </button>`;
   $('#rail').onclick = () => setSide('open');
 }
@@ -1210,6 +1236,7 @@ function initSide() {
   document.addEventListener('keydown', (ev) => {
     if (ev.key.toLowerCase() !== 'l' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
     if (ev.target.closest('input, textarea, select, [contenteditable]') || $('#modal').open) return;
+    if (wide.matches && parseHash().path === '/list' && $('#to-side')) { ev.preventDefault(); listToSide(); return; }
     if (sideMode() === 'off') return;
     ev.preventDefault();
     setSide(sideMode() === 'open' ? 'closed' : 'open');
@@ -1669,7 +1696,7 @@ async function showEditor(rawPath) {
       </div>
       <div class="editor-panes" data-tab="write">
         <div class="pane pane-write">
-          <div class="toolbar" aria-label="Insert">${isNew ? '<button class="tool-btn tool-paste" id="paste-recipe" title="Paste a recipe, or Claude\'s whole reply">Paste recipe</button>' : ''}${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}">${s.label}</button>`).join('')}</div>
+          <div class="toolbar" aria-label="Insert"><button class="tool-btn tool-paste" id="paste-recipe" title="Paste a recipe, or Claude\'s whole reply">Paste recipe</button><button class="tool-btn" id="clear-src" title="Empty the recipe text, ready to paste">Clear text</button>${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}">${s.label}</button>`).join('')}</div>
           <textarea id="src" spellcheck="true" aria-label="Recipe in Cooklang"></textarea>
           <div class="issues" id="issues"></div>
         </div>
@@ -1779,9 +1806,9 @@ async function showEditor(rawPath) {
     try { if (await usePhoto(await photoFromLink(url))) toast('Photo added.'); } catch (err) { toast(err.message); }
   };
 
-  // Pasting Claude's whole reply keeps only the recipe. A new recipe that is
-  // still the empty template is replaced, not added to.
-  const isBlank = () => isNew && (!ta.value.trim() || ta.value.trim() === TEMPLATE(author).trim());
+  // Pasting Claude's whole reply keeps only the recipe. Text that is empty or
+  // still the template is replaced, not added to.
+  const isBlank = () => !ta.value.trim() || ta.value.trim() === TEMPLATE(author).trim();
   function takeRecipe(text) {
     const rec = recipeFromReply(text);
     const plain = rec == null && isBlank() && /^\s*---/.test(text) ? text : null;
@@ -1810,6 +1837,13 @@ async function showEditor(rawPath) {
     const img = [...(ev.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
     if (img) { ev.preventDefault(); usePhoto(img); }
   };
+  // Empties the text for pasting; done as an edit so Ctrl+Z brings it back.
+  $('#clear-src').onclick = () => {
+    ta.focus();
+    ta.select();
+    if (!document.execCommand('delete')) ta.value = '';
+    markDirty(); updatePreview();
+  };
   const pasteBtn = $('#paste-recipe');
   if (pasteBtn) pasteBtn.onclick = async () => {
     let text;
@@ -1819,7 +1853,7 @@ async function showEditor(rawPath) {
     }
     if (!isBlank() && !(await ask({
       title: 'Replace the recipe text?',
-      body: 'What you typed so far is replaced by the pasted recipe.',
+      body: isNew ? 'What you typed so far is replaced by the pasted recipe.' : 'The recipe text is replaced by the pasted recipe. Nothing changes in Drive until you save.',
       actions: [{ label: 'Keep mine', value: false }, { label: 'Replace', value: true, danger: true }],
     }))) return;
     if (!isBlank()) ta.value = '';
