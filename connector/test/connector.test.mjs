@@ -83,7 +83,8 @@ ok(m.result?.isError && text(m).includes('find_recipes'), 'unknown recipe is a h
 // ---- saving
 const fs = await import('fs');
 const drv = () => fetch('http://localhost:8799/files').then((x) => x.json());
-const good = fs.readFileSync(new URL('./fixtures/dal_tadka.cook', import.meta.url), 'utf8');
+// Git may check it out with Windows line endings; the Worker saves plain ones.
+const good = fs.readFileSync(new URL('./fixtures/dal_tadka.cook', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const save = async (args) => text(await call('tools/call', { name: 'save_recipe', arguments: args }));
 t = await save({ path: '05 Mains/Curry/dal_tadka', text: good });
 let made = (await drv()).find((f) => f.name === 'dal_tadka.cook');
