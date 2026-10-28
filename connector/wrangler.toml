@@ -8,8 +8,16 @@ compatibility_date = "2025-09-01"
 GOOGLE_CLIENT_ID = "612577168689-q2nat9m25bco0uc48khnar9k0km1ck3v.apps.googleusercontent.com"
 ALLOWED_ORIGINS = "https://jensolemans.github.io,http://localhost:8000"
 ALLOWED_EMAILS = "jens.olemans@gmail.com"
+# Where Claude's tokens may be sent: Claude on the web and in the apps, and Claude Code here.
+ALLOWED_REDIRECT_HOSTS = "claude.ai,claude.com,localhost,127.0.0.1"
+GDRIVE_FOLDER_ID = "1TUHF9W1AaGtu1yrutdFIioNsIZvszNSd"
+PUBLIC_URL = "https://recipes-connector.recipes-connector.workers.dev"
+SITE_URL = "https://jensolemans.github.io/recipes/"
 
 # Secrets, set with `npx wrangler secret put <NAME>`: GOOGLE_CLIENT_SECRET, TOKEN_KEY.
 
 [[kv_namespaces]]
 binding = "AUTH"
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"

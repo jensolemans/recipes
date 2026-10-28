@@ -13,5 +13,8 @@
     "workerd@1.20261023.1": true,
     "esbuild@0.28.2": true,
     "sharp@0.35.5": true
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.4"
   }
 }
