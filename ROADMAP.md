@@ -185,6 +185,44 @@ Useful, but lower priority.
   *Samsung Food, ReciMe.*
 - [ ] **Cost per serving and drink pairing.** *Paprika, Samsung Food.*
 
+## Someday: apps friends can set up themselves
+
+Not planned yet. Jens's own setup (this site on GitHub Pages and the
+Cloudflare connector) stays as it is. If the project should ever be
+shareable, so friends run their own copy with their own recipes and their
+own Claude, this is the plan. It came out of comparing a forked setup, a
+hosted version for friends, per-file Drive access (tested, does not work:
+see "Now") and self-hosting with Docker.
+
+Independent apps, downloaded and updated from GitHub releases, no hosting,
+no Google Cloud project per person. Each app points to a folder of `.cook`
+files on the device, kept in sync by whatever the person already uses
+(Drive for desktop, Autosync/Drivesync or FolderSync on Android, Dropbox),
+like the Cooklang apps. Works offline and opens fast.
+
+- [ ] **Desktop app.** This site packaged with Tauri, reading and writing the
+  folder instead of Drive's API. The app builds the recipe index and
+  thumbnails itself (today's build.py work). Updates itself from GitHub
+  releases.
+- [ ] **Local Claude connector.** The connector's tools (find, read, save,
+  move, photo, cooklint) as a Claude Desktop extension that works on the
+  folder: install, pick the folder, done. Works in Claude Desktop and Claude
+  Code on that computer, not on Claude's phone app or claude.ai.
+- [ ] **Shopping list on plain files.** Safe when two devices change it at
+  once, for example one changes file per device that the app merges.
+- [ ] **Android app.** Same code, with access to a folder kept in sync by a
+  sync app.
+- [ ] **Built-in Drive sync** (maybe). Only works without a full Drive scope
+  if the app is the only one writing to the folder, since per-file access
+  does not see files from other apps.
+- [ ] **iPhone** (maybe never). iOS has no shared folder that a sync app keeps
+  up to date for other apps.
+
+Watch out for: unsigned apps warn on Windows and are blocked on Mac (Apple's
+developer account is $99 a year), app store accounts cost money, and without
+hosting there is no public page for friends unless the GitHub Pages publish
+stays as an option.
+
 ## Already done
 
 - [x] Search, folder browsing, filters and sort
