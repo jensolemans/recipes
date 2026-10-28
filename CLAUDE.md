@@ -107,6 +107,9 @@ folders use the same files.
   `node tests/e2e.mjs http://localhost:8000 "<recipesDir from local.json>"`
   (needs `npm i -g playwright` once). They must pass before every commit.
 - Never write to the real Drive folder while testing; the tests use the fake.
+- Connector (`connector/`): run `npm test` there before every
+  `npx wrangler deploy`. Deploying changes what Claude sees at once, so do it
+  only when the tests pass.
 - `ROADMAP.md` lists the features still to build, in order. Tick an item off
   in the same commit that ships it.
 - `ISSUES.md` is Jens's own list of bugs and annoyances to fix later. Jens

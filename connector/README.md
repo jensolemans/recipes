@@ -76,9 +76,11 @@ The connector's instructions tell Claude to use the cooklang-recipe skill.
   `npx wrangler kv key delete --binding AUTH --remote "pass:..."`.
   To sign out everywhere, remove the app in your Google account's
   third-party access page.
-- Local run: `npx wrangler dev`, with the secrets in `.dev.vars` (not
-  committed). `GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `DRIVE_API`,
-  `DRIVE_UPLOAD`, `GDRIVE_FOLDER_ID` and `PUBLIC_URL` there point it at a
-  fake Google and Drive for testing. Never test against the real folder.
-- On Windows, stopping `wrangler dev` from a background task can leave its
-  `workerd` processes running on the port; stop the whole process tree.
+- Tests: `npm test` in this folder, before every deploy. It starts a fake
+  Google, Drive and recipe website (`test/fake-google.mjs`) and the Worker
+  with `wrangler dev` pointed at them, runs `test/signin.test.mjs` (the
+  site's sign-in) and `test/connector.test.mjs` (Claude connecting and every
+  tool), and stops it all again. It reads `tools/cooklint.py` from the synced
+  folder (`recipesDir` in `../local.json`) and never writes to Drive.
+- On Windows, stopping `wrangler dev` by hand can leave its `workerd`
+  processes running on the port; stop the whole process tree.

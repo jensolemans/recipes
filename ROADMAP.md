@@ -60,8 +60,12 @@ the same name) and it cannot save photos.
   in by hand. *Mela, Crouton, ReciMe.*
 - [ ] **Recipes without a photo.** A filter or badge, so every recipe gets
   one.
-- [ ] **Tidy up.** Deploy the Worker from GitHub Actions when `connector/`
-  changes, and add tests for the tools against the fake Drive.
+- [x] **Connector tests.** `npm test` in `connector/`, against a fake Google,
+  Drive and recipe website.
+- [ ] **Deploy from GitHub.** Deploy the Worker from GitHub Actions when
+  `connector/` changes on main (needs a Cloudflare API token as a secret).
+  Only needed once the connector is changed from somewhere else than the
+  laptop.
 
 Covers what used to be planned here as import from a link, from social media
 and from a photo in the browser: Claude reads those itself.
