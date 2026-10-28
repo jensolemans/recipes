@@ -456,6 +456,24 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('#add-list', { timeout: 15000 });
   await page.click('#add-list');
   ok((await page.textContent('#toast')).includes('Added Crêpes'), 'adding a recipe says so');
+  ok(await until(() => page.$eval('#add-list', (b) => b.dataset.state === 'on'), 'basket on'), 'the basket then shows it is on the list');
+  ok((await page.getAttribute('#add-list', 'aria-label')).includes('Tap to remove'), 'and says a tap removes it');
+  await page.click('.toast-btn:has-text("Undo")');
+  ok(await until(() => page.$eval('#add-list', (b) => b.dataset.state === 'add'), 'basket add'), 'Undo after adding takes it off again');
+  await page.click('#add-list');
+  await page.click('#add-list');
+  ok(await until(() => page.textContent('#toast').then((t) => t.includes('Removed Crêpes')), 'removed'), 'a tap on the filled basket removes the recipe');
+  await page.click('.toast-btn:has-text("Undo")');
+  ok(await until(() => page.$eval('#add-list', (b) => b.dataset.state === 'on'), 'basket back'), 'and Undo puts it back');
+  if (process.env.SHOT_DIR) await page.locator('.recipe-actions').screenshot({ path: `${process.env.SHOT_DIR}/basket-on.png` });
+  await page.click('#scaler [data-d="1"]');
+  ok(await page.$eval('#add-list', (b) => b.dataset.state === 'update' && b.title.startsWith('Update to')), 'at another size the basket offers to update');
+  if (process.env.SHOT_DIR) await page.locator('.recipe-actions').screenshot({ path: `${process.env.SHOT_DIR}/basket-update.png` });
+  await page.click('#add-list');
+  ok(await until(() => page.textContent('#toast').then((t) => t.includes('is now')), 'updated'), 'and a tap updates the size');
+  ok(await page.$eval('#add-list', (b) => b.dataset.state === 'on'), 'after which it is on the list at this size');
+  await page.click('#scaler [data-reset]');
+  await page.click('#add-list');
   await page.goto(`${BASE}/#/r/05%20Mains/Pasta/lasagna?s=4`);
   await page.waitForSelector('#add-list');
   await page.click('#add-list');
@@ -616,6 +634,7 @@ const newPage = async (opts = {}) => {
   await page.goBack();
   await page.goto(`${BASE}/#/r/05%20Mains/Meat/swedish_meatballs`);
   await page.waitForSelector('#add-list');
+  await page.click('#scaler [data-d="1"]');
   await page.click('#add-list');
   await page.waitForSelector('dialog[open] .parts-list');
   ok(!(await page.isChecked('.parts-list li:has-text("Gravy") input')), 'adding again starts from the earlier choice');
@@ -672,7 +691,7 @@ const newPage = async (opts = {}) => {
   await page.waitForTimeout(900);
   const delays = await page.$$eval('.side .shop-row.is-new', (rows) => rows.map((r) => -parseFloat(r.style.animationDelay)));
   ok(delays.length > 0 && Math.min(...delays) >= 300, `a redraw after saving carries on the same flash instead of starting again (${Math.round(Math.min(...delays))} ms in)`);
-  ok(!(await page.isVisible('.toast-btn')), 'no View list button while the panel is open');
+  ok(await page.isVisible('.toast-btn:has-text("Undo")'), 'adding offers Undo');
   ok(await mainRight() <= 1400 - 340, 'the recipe makes room for the panel');
   await page.waitForTimeout(800);
   await shot('panel-open-recipe');
@@ -684,7 +703,6 @@ const newPage = async (opts = {}) => {
   await page.click('#add-list');
   await page.waitForTimeout(400);
   ok(await page.isVisible('#rail') && !(await page.isVisible('.side .shop-panel')), 'after closing it, adding keeps it closed');
-  ok(await page.isVisible('.toast-btn:has-text("View list")'), 'and offers View list instead');
   ok(Number(await page.textContent('#rail .badge')) > 10, 'the rail counts what is left to buy');
 
   await page.keyboard.press('l');

@@ -931,6 +931,7 @@ async function showRecipe(rawPath, params) {
     $('#facts').innerHTML = factsList(e, parsed, factor);
     $('#body').innerHTML = recipeBody(parsed, { path });
     drawScaler();
+    drawAddList();
     wireBody();
     const q = new URLSearchParams();
     if (base && servings !== base) q.set('s', servings);
@@ -980,10 +981,38 @@ async function showRecipe(rawPath, params) {
     wireTimerChips($('#body'), e.path, e.title);
   };
 
+  // The basket says whether the recipe is on the list: filled with a check
+  // at this size (a tap takes it off), a refresh arrow at another size (a
+  // tap updates it), plain when it is not on the list.
+  const onList = () => S.shop?.list.recipes.find((r) => r.path === path);
+  const sameSize = (r) => Math.abs(r.factor - (base ? servings / base : mult)) < 1e-6;
+  const drawAddList = () => {
+    const btn = $('#add-list');
+    if (!btn) return;
+    const r = onList();
+    const state = !r ? 'add' : sameSize(r) ? 'on' : 'update';
+    const size = base ? servingsText(servings) : `${mult}×`;
+    const label = state === 'on' ? 'On your shopping list. Tap to remove.'
+      : state === 'update' ? `Update to ${size} (now ${r.servings ? servingsText(r.servings) : `${Math.round(r.factor * 100) / 100}×`} on your list)`
+      : 'Add to shopping list';
+    btn.dataset.state = state;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-pressed', String(state === 'on'));
+    btn.innerHTML = state === 'on' ? BASKET_ON_ICON : state === 'update' ? BASKET_UPDATE_ICON : BASKET_ICON;
+  };
+  // Another device or the side panel can change the list while this is open.
+  S.refreshAddList = drawAddList;
+
   const addList = $('#add-list');
   if (addList) addList.onclick = async () => {
     const factor = base ? servings / base : mult;
-    const existing = S.shop.list.recipes.find((r) => r.path === path);
+    const existing = onList();
+    if (existing && sameSize(existing)) {
+      undoable(`Removed ${e.title} from your shopping list.`, { t: 'removeRecipe', id: existing.id });
+      return;
+    }
+    const before = S.shop.list;
     // A recipe in parts (meatballs, gravy) asks which parts to shop for.
     let parts = null;
     const all = recipeParts(e.src);
@@ -1002,7 +1031,7 @@ async function showRecipe(rawPath, params) {
     if (sideMode() !== 'off' && saved.get('sidePanel', null) == null) setSide('open');
     const size = [base ? servingsText(servings) : `${mult}×`, parts ? partsText(parts) : ''].filter(Boolean).join(', ');
     toast(existing ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
-      sideMode() === 'open' ? undefined : { label: 'View list', run: () => go('#/list') });
+      { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
   };
 
   // The link already carries the scale, so everything shared opens at it.
@@ -1482,7 +1511,14 @@ async function showCook(rawPath, params) {
 // ---------------------------------------------------------------- shopping list
 
 const BASKET_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5h17l-1.7 9.1a2 2 0 0 1-2 1.6H7.2a2 2 0 0 1-2-1.6z"/><path d="m8.5 9.5 3-6M15.5 9.5l-3-6"/></svg>';
-const MORE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
+// The basket with a check (on the list) or a refresh arrow (on it at another
+// size) in its top corner. The wide `halo` stroke cuts a gap around the mark.
+const BASKET_MARK = (mark, filled) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.5h17l-1.7 9.1a2 2 0 0 1-2 1.6H7.2a2 2 0 0 1-2-1.6z"${filled ? ' fill="currentColor"' : ''}/><path d="m8.5 9.5 3-6M15.5 9.5l-3-6"/>${mark}</svg>`;
+const BASKET_ON_ICON = BASKET_MARK('<path class="halo" d="M14.3 4.8l3.2 3.2 6.3-6.3" style="stroke-width:5"/><path d="M14.3 4.8l3.2 3.2 6.3-6.3" style="stroke-width:2"/>', true);
+const ARROW_RING = 'M23.45 5.94A4.2 4.2 0 1 1 22.62 1.69';
+const ARROW_HEAD = 'M24.36 3.62L23.88 .55 21.36 2.83z';
+const BASKET_UPDATE_ICON = BASKET_MARK(`<path class="halo" d="${ARROW_RING}" style="stroke-width:4.5"/><path class="halo" d="${ARROW_HEAD}" style="stroke-width:3"/><path d="${ARROW_RING}" style="stroke-width:1.5"/><path d="${ARROW_HEAD}" fill="currentColor" style="stroke-width:1"/>`, false);
+const MORE_ICON ='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>';
 
 let aisleCache = { text: null, parsed: null };
 let pantryCache = { text: null, parsed: null };
@@ -1523,6 +1559,7 @@ function listLink() {
 
 function onShopChange() {
   renderAccount();
+  S.refreshAddList?.();
   if ($('#shop-body')) updateList();
   else renderSide();
 }
