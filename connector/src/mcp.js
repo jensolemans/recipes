@@ -3,6 +3,7 @@
 // save Jens's recipe folder in Google Drive with his own Google key.
 
 import { lint, rulesFrom } from './lint.js';
+import { getPhoto } from './photo.js';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -18,7 +19,7 @@ Whenever you write, convert or change a recipe, use the cooklang-recipe skill an
 
 Saving: save_recipe checks the recipe against the house style (tools/cooklint.py) and refuses it with a list of problems; fix them and save again. For a change to an existing recipe, pass the version read_recipe gave. For a new recipe, pick the folder with list_folders and name the file after the title in snake_case; if that name is taken, ask Jens whether to replace it, use another name or skip. After saving, give Jens the link to the recipe.
 
-Photos cannot be added through here yet: for a recipe without one, give Jens the "Add photo" link that save_recipe returns.`;
+Photos: every recipe needs one. For a recipe from a web page, add the page's photo with set_photo and the page address, right after saving. For a cookbook page or anything else without a photo link, give Jens the "Add photo" link that save_recipe returns, where he can paste or pick one. A photo of a cookbook page is never the dish photo.`;
 
 const TOOLS = [
   {
@@ -80,6 +81,21 @@ const TOOLS = [
       required: ['path', 'to'],
     },
     annotations: { destructiveHint: false },
+  },
+  {
+    name: 'set_photo',
+    title: 'Add the dish photo',
+    description: 'Saves the dish photo of a recipe from a web address: a recipe page (the photo is found in its recipe data or share image) or a direct image link. Saved next to the recipe as a JPEG of at most 1600 px and under 1 MB.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The recipe, for example "05 Mains/Curry/dal_tadka".' },
+        url: { type: 'string', description: 'The recipe page or the image itself.' },
+        replace: { type: 'boolean', description: 'Replace the photo the recipe already has. Only after Jens said so.' },
+      },
+      required: ['path', 'url'],
+    },
+    annotations: { destructiveHint: false, openWorldHint: true },
   },
 ];
 
@@ -229,6 +245,25 @@ const RUN = {
     if (r.photoId) await drive.move(r.photoId, { name: name + r.photo.slice(r.photo.lastIndexOf('.')), from, to: into });
     return `Moved ${r.path}.cook to ${np}.cook${r.photoId ? ', with its photo' : ''}.\nSite: ${siteLink(env, np)}`;
   },
+
+  async set_photo({ path, url, replace }, drive, env) {
+    const idx = await drive.index();
+    const r = findRecipe(idx, path);
+    if (r.photo && !replace) {
+      throw userError(`${r.path} already has a photo (${r.photo}). Ask Jens whether to replace it; if so, call again with replace: true.`);
+    }
+    const photo = await getPhoto(env, String(url || ''));
+    const name = `${r.path.split('/').pop()}.jpg`;
+    if (r.photoId) {
+      await drive.update(r.photoId, photo.bytes, 'image/jpeg');
+      const here = idx.folders.get(r.folder);
+      if (r.photo !== name) await drive.move(r.photoId, { name, from: here, to: here });
+    } else {
+      await drive.create(name, idx.folders.get(r.folder), photo.bytes, 'image/jpeg');
+    }
+    const size = photo.width ? `${photo.width} x ${photo.height}, ` : '';
+    return `Saved the photo for ${r.path} as ${name} (${size}${Math.round(photo.bytes.length / 1024)} KB) from ${photo.source}.\nSite: ${siteLink(env, r.path)}`;
+  },
 };
 
 // ---------------------------------------------------------------- Drive
@@ -326,15 +361,20 @@ class Drive {
     return res.json();
   }
 
-  create(name, parent, text) {
+  /** A new file: text (a recipe) or bytes (a photo). */
+  create(name, parent, content, type = 'text/plain; charset=UTF-8') {
     const boundary = `recipe${crypto.randomUUID()}`;
-    const meta = JSON.stringify({ name, parents: [parent], mimeType: 'text/plain' });
-    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${text}\r\n--${boundary}--`;
+    const meta = JSON.stringify({ name, parents: [parent], mimeType: type.split(';')[0] });
+    const body = new Blob([
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${type}\r\n\r\n`,
+      content,
+      `\r\n--${boundary}--`,
+    ]);
     return this.send(`${this.upload}/files?uploadType=multipart&fields=${FILE_FIELDS}`, 'POST', body, `multipart/related; boundary=${boundary}`);
   }
 
-  update(id, text) {
-    return this.send(`${this.upload}/files/${id}?uploadType=media&fields=${FILE_FIELDS}`, 'PATCH', text, 'text/plain; charset=UTF-8');
+  update(id, content, type = 'text/plain; charset=UTF-8') {
+    return this.send(`${this.upload}/files/${id}?uploadType=media&fields=${FILE_FIELDS}`, 'PATCH', content, type);
   }
 
   move(id, { name, from, to }) {

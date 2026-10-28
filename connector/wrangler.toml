@@ -21,3 +21,7 @@ binding = "AUTH"
 
 [[kv_namespaces]]
 binding = "OAUTH_KV"
+
+# Cloudflare Images: resizes the dish photos (the Worker has too little CPU for it).
+[images]
+binding = "IMAGES"

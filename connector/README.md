@@ -59,7 +59,10 @@ Allow, then Google. The phone app picks it up from the account.
 Tools: `list_folders`, `find_recipes`, `read_recipe`, `save_recipe` (new
 recipes and edits in place; refused when the recipe changed since Claude read
 it, or when it fails the house style of `tools/cooklint.py`, whose rules
-`src/lint.js` ports), `move_recipe` (the photo moves along). No delete.
+`src/lint.js` ports), `move_recipe` (the photo moves along), `set_photo`
+(from a recipe page or image link; `src/photo.js` does what
+`scripts/fetch_photo.py` does, with Cloudflare's Images binding for the
+resizing, free up to 5,000 a month). No delete.
 The connector's instructions tell Claude to use the cooklang-recipe skill.
 
 ## Day to day

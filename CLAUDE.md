@@ -89,7 +89,8 @@ folders use the same files.
   only Jens's account, only Claude's addresses) and gets list_folders,
   find_recipes, read_recipe, save_recipe (in place, refused when the version
   changed or the house style fails: `src/lint.js` ports cooklint and reads
-  its word lists from `tools/cooklint.py`) and move_recipe. Setup in
+  its word lists from `tools/cooklint.py`), move_recipe and set_photo
+  (`src/photo.js`, as fetch_photo.py, resized by the Images binding). Setup in
   `connector/README.md`.
 - `tests/e2e.mjs`: Playwright tests against a running site, with an in-memory
   fake of the Google Drive API for the editor.

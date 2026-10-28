@@ -45,12 +45,12 @@ the same name) and it cannot save photos.
   changed since Claude read it, checked first with the `cooklint` rules
   (ported to JavaScript, word lists read from `tools/cooklint.py`). `move_recipe` moves the photo along. No delete:
   that stays in the app.
-- [ ] **Connector, photos.** `set_photo` from a recipe page or image link,
-  saved as `<same name>.jpg`. The free plan's 10 ms of CPU per request is too
-  little to resize, so pick the best size the page offers; build.py already
-  makes the site's small versions. Photos attached in the chat cannot reach
-  the connector: Claude replies with a link that opens the recipe in the app
-  on Paste photo.
+- [x] **Connector, photos.** `set_photo` from a recipe page (its recipe
+  data, then og:image) or an image link, saved as `<same name>.jpg`, at most
+  1600 px and under 1 MB, like `scripts/fetch_photo.py`. Resized by
+  Cloudflare's Images binding (free up to 5,000 a month), since the Worker
+  has too little CPU time. Photos attached in the chat cannot reach the
+  connector: Claude gives the "Add photo" link to the site's editor.
 - [ ] **Claude buttons in the app.** "Edit with Claude" on recipes and New
   opening Claude (`claude.ai/new?q=...`) with the request typed in. Check that
   the link opens the Claude app on the phone. The editor stays as "Edit by
