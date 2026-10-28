@@ -376,6 +376,14 @@ body:has(.sheet[open]) { overflow: hidden; }
 /* Add to shopping list: the check or arrow in the basket's corner pokes out of the icon box */
 #add-list svg { overflow: visible; }
 #add-list .halo { stroke: var(--card); fill: var(--card); }
+/* ⋯ holds what is used less: share (signed in), print, photo, the editor */
+.recipe-more summary { display: grid; place-items: center; }
+.recipe-more .menu-pop { width: 200px; }
+.recipe-more .menu-pop.at-left { right: auto; left: 0; }
+/* phones: the servings on one line, the buttons together on the next */
+.row-break { display: none; }
+@media (max-width: 559px) { .row-break { display: block; flex-basis: 100%; height: 0; margin-top: -8px; } }
+.photo-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
 
 .recipe-body {
   display: grid; grid-template-columns: minmax(250px, 340px) minmax(0, 1fr); gap: 48px; margin-top: 44px; align-items: start;

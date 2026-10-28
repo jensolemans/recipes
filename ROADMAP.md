@@ -51,10 +51,13 @@ the same name) and it cannot save photos.
   Cloudflare's Images binding (free up to 5,000 a month), since the Worker
   has too little CPU time. Photos attached in the chat cannot reach the
   connector: Claude gives the "Add photo" link to the site's editor.
-- [ ] **Claude buttons in the app.** "Edit with Claude" on recipes and New
-  opening Claude (`claude.ai/new?q=...`) with the request typed in. Check that
-  the link opens the Claude app on the phone. The editor stays as "Edit by
-  hand".
+- [x] **Claude buttons in the app.** New and Edit open Claude
+  (`claude.ai/new?q=...`) with the request typed in: the folder you are in, or
+  the recipe's path. The recipe page keeps Cook, Add to list and Edit; Share,
+  Print, Change photo and Edit file sit behind ⋯. New blank recipe is in the
+  account menu. Offline or with the connector down, New and Edit open the
+  editor, which keeps a draft on the device. Claude warns about prefilled
+  prompts from links; kept for now (copy and open an empty chat avoids it).
 - [ ] **Share to the app.** Share a link from the phone's share sheet straight
   into the app (Web Share Target in the manifest), for links that should go
   in by hand. *Mela, Crouton, ReciMe.*

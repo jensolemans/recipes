@@ -233,7 +233,7 @@ const newPage = async (opts = {}) => {
   const page = await newPage();
   await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('#cook-btn');
-  const order = await page.$$eval('.recipe-actions > *', (els) => els.map((e) => e.id || e.className));
+  const order = await page.$$eval('.recipe-actions > :not(.row-break)', (els) => els.map((e) => e.id || e.className));
   ok(order[0] === 'scaler' && order[1] === 'cook-btn', `cook mode sits right after the servings (${order.join(', ')})`);
   await page.click('[data-d="1"]');
   await page.click('#cook-btn');
@@ -594,12 +594,14 @@ const newPage = async (opts = {}) => {
   ok(await until(() => !listJson().recipes.length && !listJson().items.length, 'clear all'), 'Clear shopping list empties it');
   await page.waitForSelector('.shop-empty');
 
-  // phone: the add button is a round basket next to the servings, the editor hides the bar
+  // phone: the servings on one line, the add button a round basket beside
+  // cook mode under it, the editor hides the bar
   await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
   await page.waitForSelector('#add-list');
   const add = await page.$eval('#add-list', (b) => b.getBoundingClientRect().toJSON());
-  const scaler = await page.$eval('#scaler', (s) => s.getBoundingClientRect().toJSON());
-  ok(add.width < 60 && Math.abs(add.top - scaler.top) < 10, 'on a recipe, Add to shopping list is a basket next to the servings');
+  const cook = await page.$eval('#cook-btn', (s) => s.getBoundingClientRect().toJSON());
+  const more = await page.$eval('.recipe-more', (s) => s.getBoundingClientRect().toJSON());
+  ok(add.width < 60 && Math.abs(add.top - cook.top) < 10 && Math.abs(more.top - cook.top) < 10, 'on a recipe, Add to shopping list is a basket in the row with cook mode and ⋯');
   ok(await page.$eval('#tabbar .tab[aria-current]', (t) => t.textContent.trim()) === 'Recipes', 'Recipes is selected on a recipe');
   if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/tabbar-recipe.png` });
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -883,7 +885,7 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('#signin');
   const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#signin')]);
   ok(popup.url().startsWith(`${AUTH}/auth/start?login=`), 'sign-in opens the Worker in a new window');
-  await page.waitForSelector('a[href="#/new"]', { timeout: 10000 });
+  await page.waitForSelector('.btn-new', { timeout: 10000 });
   ok(await page.evaluate(() => localStorage.getItem('recipes.pass')) === worker.pass, 'signed in through the Worker, pass kept on this device');
   ok(worker.tokens === 1, 'one token after sign-in');
 
@@ -893,8 +895,25 @@ const newPage = async (opts = {}) => {
     localStorage.setItem('recipes.session', JSON.stringify({ ...s, expires: Date.now() - 1000 }));
   });
   await page.reload();
-  await page.waitForSelector('a[href="#/new"]', { timeout: 10000 });
+  await page.waitForSelector('.btn-new', { timeout: 10000 });
   ok(worker.tokens === 2 && !(await page.$('#signin')), 'an hour later it renews quietly, no Renew sign-in');
+
+  // With the connector, New and Edit open Claude with the request typed in.
+  const newHref = await page.getAttribute('.btn-new', 'href');
+  ok(newHref.startsWith('https://claude.ai/new?q=') && await page.getAttribute('.btn-new', 'target') === '_blank', 'New opens Claude in a new tab');
+  ok(await page.$('.menu-pop a[href="#/new"]'), 'the account menu keeps New blank recipe for the editor');
+  await page.click('a.card');
+  await page.waitForSelector('#edit-btn');
+  const recipePath = decodeURIComponent(await page.evaluate(() => location.hash)).replace(/^#\/r\//, '').replace(/\?.*$/, '');
+  ok(decodeURIComponent(await page.getAttribute('#edit-btn', 'href')) === `https://claude.ai/new?q=Change my recipe ${recipePath}.cook: `, 'Edit opens Claude with the recipe path');
+  ok(await page.$(`.recipe-more a[href="#/edit/${recipePath.split('/').map(encodeURIComponent).join('/')}"]`), 'Edit file in the ⋯ menu opens the editor');
+  await page.context().setOffline(true);
+  await page.click('#edit-btn');
+  await page.waitForSelector('.editor');
+  ok((await page.textContent('#toast')).includes("You're offline"), 'offline, Edit opens the editor and says why');
+  await page.context().setOffline(false);
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('.btn-new', { timeout: 10000 });
   const pages = ctx.pages().length;
   await page.click('summary.avatar');
   await page.click('[data-action="signout"]');

@@ -136,6 +136,17 @@ async function boot() {
     S.shop = shop.createSync({ drive, configFolder, onChange: onShopChange });
     window.addEventListener('online', () => { if (drive.wasSignedIn()) S.shop.sync(); });
   }
+  if (drive.wasSignedIn()) checkConnector();
+  window.addEventListener('online', () => {
+    connectorChecked = 0;
+    if (!drive.wasSignedIn()) return;
+    checkConnector();
+    // The editor opened offline: its work can go to Drive now.
+    if (document.body.dataset.view === 'editor' && S.live !== 'on') {
+      $('#save-state').textContent = S.dirty ? 'Unsaved changes' : '';
+      toast("You're back online.", { label: 'Save', run: () => $('#save')?.click() });
+    }
+  });
   initParser().then(() => { S.parserReady = true; renderAccount(); }).catch(() => {});
   renderAccount();
   renderFoot();
@@ -148,6 +159,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     watchSession();
+    if (drive.wasSignedIn()) checkConnector();
     if ($('#shop-body')) S.shop?.sync();
     if (document.body.dataset.view === 'cook' && saved.get('cookAwake', true)) keepAwake(true); // the lock goes when the tab is hidden
   });
@@ -178,6 +190,7 @@ async function onHashChange() {
       return;
     }
     S.dirty = false;
+    S.dropDraft?.();
   }
   route();
 }
@@ -233,6 +246,84 @@ function initTheme() {
   };
 }
 
+// ---------------------------------------------------------------- Claude
+//
+// New and Edit open a Claude chat with the start of the request typed in;
+// Claude writes the recipe with the cooklang-recipe skill and saves it to
+// Drive through the recipes connector. Without the connector (no authUrl),
+// offline, or when it does not answer, they open the editor instead.
+
+const CLAUDE_NEW = 'https://claude.ai/new?q=';
+let connector = 'unknown'; // unknown | up | down
+let connectorChecked = 0;
+
+async function checkConnector() {
+  if (!S.config.authUrl || !navigator.onLine || Date.now() - connectorChecked < 60_000) return;
+  connectorChecked = Date.now();
+  try {
+    // Any answer will do; the Worker does not send CORS headers for its home page.
+    await fetch(S.config.authUrl, { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    connector = 'up';
+  } catch {
+    connector = 'down';
+  }
+}
+
+/** Why New and Edit open the editor instead of Claude, or '' when Claude can take it. */
+function noClaude() {
+  if (!S.config.authUrl) return 'none';
+  if (!navigator.onLine) return "You're offline, so this opens the editor.";
+  if (connector === 'down') return "The recipes connector isn't answering, so this opens the editor.";
+  return '';
+}
+
+/** The folder a new recipe probably goes in: the recipe or folder being looked at. */
+function currentFolder() {
+  const { path } = parseHash();
+  const at = path.startsWith('/r/') ? path.slice(3) : path.startsWith('/cook/') ? path.slice(6) : null;
+  if (at != null) return S.recipes.get(at)?.folder || '';
+  return [S.filters.chapter, S.filters.sub].filter(Boolean).join('/');
+}
+
+function claudeText(path) {
+  if (path) return `Change my recipe ${path}.cook: `;
+  const folder = currentFolder();
+  return folder ? `New recipe for my collection, probably for ${folder}. ` : 'New recipe for my collection. ';
+}
+
+/** Attributes for a New (no path) or Edit link. */
+function claudeLink(path = null) {
+  const editor = path ? `#/edit/${encPath(path)}` : '#/new';
+  if (noClaude() === 'none') return `href="${editor}"`;
+  return `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path)))}" target="_blank" rel="noopener" data-claude="${esc(path || '')}"`;
+}
+
+// One handler for every Claude link: the folder is filled in at the tap,
+// and without Claude the editor opens with a line saying why.
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest('a[data-claude]');
+  if (!a) return;
+  const path = a.dataset.claude || null;
+  const why = noClaude();
+  if (why) {
+    ev.preventDefault();
+    go(path ? `#/edit/${encPath(path)}` : '#/new');
+    toast(why);
+    return;
+  }
+  a.href = CLAUDE_NEW + encodeURIComponent(claudeText(path));
+  connectorChecked = 0; // look again when the page comes back
+});
+
+// ---------------------------------------------------------------- menus
+
+// The account menu and the recipe's ⋯ menu close on a tap outside them or Escape.
+function closeMenus(except) {
+  $$('details.menu[open]').forEach((d) => { if (d !== except) d.open = false; });
+}
+document.addEventListener('click', (ev) => closeMenus(ev.target.closest('details.menu')));
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeMenus(); });
+
 // ---------------------------------------------------------------- account bar
 
 function renderAccount() {
@@ -248,7 +339,7 @@ function renderAccount() {
   if (S.live === 'on' && drive.signedIn()) {
     const u = drive.user() || {};
     el.innerHTML = `${list}
-      <a class="btn btn-primary btn-sm btn-new" href="#/new" aria-label="New recipe" title="New recipe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New recipe</span></a>
+      <a class="btn btn-primary btn-sm btn-new" ${claudeLink()} aria-label="New recipe" title="New recipe"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New recipe</span></a>
       <details class="menu">
         <summary class="avatar" aria-label="Account menu">${esc((u.name || u.email || '?').charAt(0).toUpperCase())}</summary>
         <div class="menu-pop">
@@ -256,6 +347,7 @@ function renderAccount() {
           <p class="menu-note">You see live recipes from Google Drive. Friends see changes after the next hourly update.</p>
           ${S.config.publishUrl ? `<a class="menu-item" href="${esc(S.config.publishUrl)}" target="_blank" rel="noopener">Update the friends' site now</a>` : ''}
           <button class="menu-item" data-action="refresh">Reload from Google Drive</button>
+          <a class="menu-item" href="#/new">New blank recipe</a>
           <button class="menu-item" data-action="signout">Sign out</button>
         </div>
       </details>`;
@@ -889,6 +981,8 @@ async function showRecipe(rawPath, params) {
 
   const crumbs = [e.chapter, ...e.sub.split('/').filter(Boolean)];
   const canEdit = S.live === 'on' && e.driveId;
+  // Signed in on this device: also offline, where Edit opens the editor.
+  const owner = drive.enabled() && drive.wasSignedIn();
 
   $('#main').innerHTML = `
     <article class="recipe" data-path="${esc(path)}">
@@ -907,18 +1001,33 @@ async function showRecipe(rawPath, params) {
           <p class="print-only print-size" id="print-size"></p>
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
+            <span class="row-break" aria-hidden="true"></span>
             <a class="btn btn-primary icon-btn" id="cook-btn" href="#/cook/${encPath(path)}" title="Cook mode" aria-label="Cook mode">${CHEF_ICON}</a>
             ${S.shop && S.live === 'on' ? `<button class="btn btn-quiet icon-btn" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}</button>` : ''}
-            <button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>
-            <button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>
-            ${canEdit ? `<a class="btn btn-quiet icon-btn" href="#/edit/${encPath(path)}" title="Edit" aria-label="Edit">${PEN_ICON}</a>` : ''}
+            ${owner
+              ? `<a class="btn btn-quiet icon-btn" id="edit-btn" ${claudeLink(path)} title="Edit" aria-label="Edit">${PEN_ICON}</a>`
+              : `<button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>`}
+            <details class="menu recipe-more">
+              <summary class="btn btn-quiet icon-btn" title="More" aria-label="More">${MORE_ICON}</summary>
+              <div class="menu-pop">
+                ${owner ? '<button class="menu-item" id="share-btn" aria-haspopup="dialog">Share</button>' : ''}
+                <button class="menu-item" id="print-btn">Print</button>
+                ${canEdit ? '<button class="menu-item" id="photo-btn" aria-haspopup="dialog">Change photo</button>' : ''}
+                ${owner ? `<a class="menu-item" href="#/edit/${encPath(path)}">Edit file</a>` : ''}
+              </div>
+            </details>
           </div>
         </div>
       </div>
       <div class="recipe-body" id="body"></div>
       <p class="print-only print-foot" id="print-foot"></p>
     </article>`;
-  $('#print-btn').onclick = () => window.print();
+  $('#print-btn').onclick = () => { closeMenus(); window.print(); };
+  const photoBtn = $('#photo-btn');
+  if (photoBtn) photoBtn.onclick = () => { closeMenus(); changePhoto(e); };
+  // When the row wraps, ⋯ can end up on the left: open the menu rightwards then.
+  const more = $('.recipe-more');
+  more.ontoggle = () => { if (more.open) $('.menu-pop', more).classList.toggle('at-left', more.getBoundingClientRect().right < 220); };
 
   $$('.crumbs a[data-ch]').forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); S.filters.chapter = a.dataset.ch; S.filters.sub = a.dataset.sub; go('#/'); };
@@ -1035,7 +1144,10 @@ async function showRecipe(rawPath, params) {
   };
 
   // The link already carries the scale, so everything shared opens at it.
-  $('#share-btn').onclick = () => openShare(e, parsed, base ? servingsText(servings) : mult !== 1 ? `${mult}× the recipe` : '');
+  $('#share-btn').onclick = () => {
+    closeMenus();
+    openShare(e, parsed, base ? servingsText(servings) : mult !== 1 ? `${mult}× the recipe` : '');
+  };
 
   draw();
   window.scrollTo({ top: 0 });
@@ -1751,11 +1863,11 @@ function renderTabbar() {
   el.hidden = !show;
   if (!show) { el.innerHTML = ''; return; }
   const n = toBuyCount();
-  const tab = (href, icon, label, on, extra = '') => `<a class="tab" href="${href}"${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span>${extra}</a>`;
+  const tab = (href, icon, label, on, extra = '') => `<a class="tab" ${href.startsWith('#') ? `href="${href}"` : href}${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span>${extra}</a>`;
   el.innerHTML = [
     tab('#/', CHEF_ICON, 'Recipes', path !== '/list'),
     tab('#/list', BASKET_ICON, 'Shopping list', path === '/list', n ? `<span class="badge" aria-label="${n} to buy">${n}</span>` : ''),
-    tab('#/new', PLUS_ICON, 'New', false),
+    tab(claudeLink(), PLUS_ICON, 'New', false),
   ].join('');
 }
 
@@ -2210,19 +2322,108 @@ async function photoFromLink(url) {
   return blob;
 }
 
+/** The photo on the clipboard, or null when there is none. Throws when the browser cannot read it. */
+async function clipboardPhoto() {
+  const items = await navigator.clipboard.read();
+  for (const item of items) {
+    const type = item.types.find((t) => t.startsWith('image/'));
+    if (type) return item.getType(type);
+  }
+  return null;
+}
+
+/** Asks for a dish photo: picked or taken, pasted, or from a link. Resolves with it, or null. */
+function choosePhoto(title) {
+  const dlg = $('#modal');
+  dlg.innerHTML = `<form method="dialog">
+    <h2>${esc(title)}</h2>
+    <p>Take a photo or pick one, or copy a photo on a recipe site and paste it.</p>
+    <div class="photo-choices">
+      <label class="btn btn-quiet">Choose photo<input type="file" id="pc-file" accept="image/*" hidden></label>
+      <button type="button" class="btn btn-quiet" id="pc-paste">Paste photo</button>
+      <button value="link" class="btn btn-quiet">Photo link</button>
+    </div>
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button></div>
+  </form>`;
+  let photo = null;
+  const take = (blob) => { photo = blob; dlg.close('ok'); };
+  $('#pc-file', dlg).onchange = (ev) => { const f = ev.target.files?.[0]; if (f) take(f); };
+  $('#pc-paste', dlg).onclick = async () => {
+    let blob;
+    try { blob = await clipboardPhoto(); } catch { blob = undefined; }
+    if (blob) { take(blob); return; }
+    dlg.close('cancel');
+    toast(blob === null
+      ? 'There is no photo on the clipboard. Right-click or long-press the photo on the recipe site and copy it first.'
+      : 'This browser cannot read photos from the clipboard here. Press Ctrl+V while this window is open instead.');
+  };
+  // Ctrl+V while the window is open works too.
+  dlg.onpaste = (ev) => {
+    const img = [...(ev.clipboardData?.files || [])].find((f) => f.type.startsWith('image/'));
+    if (img) { ev.preventDefault(); take(img); }
+  };
+  return new Promise((resolve) => {
+    dlg.onclose = async () => {
+      const v = dlg.returnValue;
+      dlg.returnValue = '';
+      dlg.onpaste = null;
+      if (v === 'ok') { resolve(photo); return; }
+      if (v !== 'link') { resolve(null); return; }
+      const url = await askText({ title: 'Photo link', body: 'Paste the web address of the photo. Right-click or long-press the photo on the recipe site and copy the image address.', label: 'Photo address', placeholder: 'https://' });
+      if (!url) { resolve(null); return; }
+      try { resolve(await photoFromLink(url)); } catch (err) { toast(err.message); resolve(null); }
+    };
+    dlg.showModal();
+  });
+}
+
+/** Change photo in the recipe's ⋯ menu: saves the photo next to the recipe in Drive. */
+async function changePhoto(e) {
+  const picked = await choosePhoto(e.driveImage ? 'Change photo' : 'Add photo');
+  if (!picked) return;
+  try {
+    const blob = await resizeImage(picked);
+    await drive.renewIfNeeded();
+    const folderId = S.drive.folders.get(e.folder);
+    const old = e.driveImage;
+    let img;
+    if (old) {
+      img = await drive.updateContent(old.id, blob, 'image/jpeg');
+      if (img.name !== `${e.file}.jpg`) img = await drive.moveRename(img.id, { name: `${e.file}.jpg` });
+      S.drive.files.delete(`${e.folder}/${old.name}`);
+    } else {
+      img = await drive.create(`${e.file}.jpg`, folderId, blob, 'image/jpeg');
+    }
+    S.drive.files.set(`${e.path}.jpg`, img);
+    if (e.imageUrl?.startsWith('blob:')) URL.revokeObjectURL(e.imageUrl);
+    e.imageUrl = URL.createObjectURL(blob);
+    e.thumbUrl = e.imageUrl;
+    e.image = undefined;
+    e.imageMd5 = img.md5Checksum;
+    e.driveImage = img;
+    toast('Photo saved to Google Drive.');
+    if (parseHash().path === `/r/${e.path}`) route();
+  } catch (err) {
+    toast(err.message || 'The photo could not be saved.');
+    renderAccount();
+  }
+}
+
 async function showEditor(rawPath) {
   document.body.dataset.view = 'editor';
   if (!drive.enabled()) { go('#/'); return; }
-  // An ended sign-in does not block editing: Save renews it.
-  if (S.live !== 'on') {
+  // An ended sign-in does not block editing: Save renews it. Offline, the
+  // editor works from the copy on this device and keeps a draft until Save works.
+  const offline = S.live !== 'on' && !navigator.onLine && drive.wasSignedIn();
+  if (S.live !== 'on' && !offline) {
     if (S.live === 'loading') { $('#main').innerHTML = '<p class="loading">Syncing with Google Drive…</p>'; return; }
     $('#main').innerHTML = `<div class="empty"><h1>Sign in to edit</h1><p>Editing changes the recipe files in Google Drive, so only the owner of the folder can do it.</p><button class="btn btn-primary" id="signin2">Sign in with Google</button></div>`;
     $('#signin2').onclick = () => signInFlow();
     return;
   }
   const isNew = rawPath == null;
-  const e = isNew ? null : S.recipes.get(rawPath);
-  if (!isNew && (!e || !e.driveId)) {
+  let e = isNew ? null : S.recipes.get(rawPath);
+  if (!isNew && (!e || (!e.driveId && !offline))) {
     $('#main').innerHTML = `<div class="empty"><h1>Recipe not found</h1><p>It may have been moved, renamed or deleted in Google Drive.</p><a class="btn btn-quiet" href="#/">All recipes</a></div>`;
     return;
   }
@@ -2243,7 +2444,15 @@ async function showEditor(rawPath) {
     saving: false,
   };
   S.dirty = false;
-  const markDirty = () => { S.dirty = true; $('#save-state').textContent = 'Unsaved changes'; };
+  // Unsaved work is kept on this device (not the photo), so a closed tab or
+  // a save that fails offline loses nothing. Leaving without saving drops it.
+  const draftKey = `draft.${isNew ? '/new' : e.path}`;
+  const keepDraft = debounce(() => {
+    if (S.dirty && ta.isConnected) saved.set(draftKey, { src: ta.value, folder: st.folder, file: st.file, md5: st.loadedMd5, at: Date.now() });
+  }, 400);
+  const dropDraft = () => { saved.set(draftKey, null); };
+  S.dropDraft = dropDraft;
+  const markDirty = () => { S.dirty = true; $('#save-state').textContent = 'Unsaved changes'; keepDraft(); };
 
   $('#main').innerHTML = `
     <section class="editor">
@@ -2251,7 +2460,7 @@ async function showEditor(rawPath) {
         <a class="link-btn" href="${isNew ? '#/' : `#/r/${encPath(e.path)}`}">Cancel</a>
         <h1>${isNew ? 'New recipe' : `Edit ${esc(e.title)}`}</h1>
         <span class="save-state" id="save-state" aria-live="polite"></span>
-        ${isNew ? '' : '<button class="btn btn-quiet btn-sm btn-danger" id="del">Delete</button>'}
+        ${isNew || offline ? '' : '<button class="btn btn-quiet btn-sm btn-danger" id="del">Delete</button>'}
         <button class="btn btn-primary" id="save">Save</button>
       </div>
       <div class="editor-fields">
@@ -2286,6 +2495,36 @@ async function showEditor(rawPath) {
 
   const ta = $('#src');
   ta.value = st.src;
+
+  // A draft left from last time comes back. It keeps the version it started
+  // from, so saving still asks when the recipe changed in Drive since.
+  const draft = saved.get(draftKey, null);
+  if (draft && draft.src !== st.src) {
+    const original = { ...st };
+    ta.value = draft.src;
+    st.folder = draft.folder || st.folder;
+    st.file = draft.file ?? st.file;
+    st.loadedMd5 = isNew ? null : draft.md5 ?? st.loadedMd5;
+    st.fileTouched = st.folderTouched = true;
+    $('#folder').value = st.folder;
+    $('#file').value = st.file;
+    S.dirty = true;
+    $('#save-state').textContent = 'Unsaved changes';
+    toast(`Your unsaved changes from ${new Date(draft.at).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} are back.`, {
+      label: 'Discard',
+      run: () => {
+        Object.assign(st, original);
+        ta.value = st.src;
+        $('#folder').value = st.folder;
+        $('#file').value = st.file;
+        S.dirty = false;
+        $('#save-state').textContent = '';
+        dropDraft();
+        updatePreview();
+      },
+    });
+  }
+  if (offline) $('#save-state').textContent = S.dirty ? 'Offline, unsaved changes' : 'Offline';
 
   const updatePreview = () => {
     if (!ta.isConnected) return; // left the editor before the debounce fired
@@ -2369,15 +2608,12 @@ async function showEditor(rawPath) {
   }
   $('#photo').onchange = (ev) => { const f = ev.target.files?.[0]; if (f) usePhoto(f); };
   $('#paste-photo').onclick = async () => {
-    let items;
-    try { items = await navigator.clipboard.read(); } catch {
+    let blob;
+    try { blob = await clipboardPhoto(); } catch {
       toast('This browser cannot read photos from the clipboard here. Click in the recipe text and press Ctrl+V instead.');
       return;
     }
-    for (const item of items) {
-      const type = item.types.find((t) => t.startsWith('image/'));
-      if (type) { usePhoto(await item.getType(type)); return; }
-    }
+    if (blob) { usePhoto(blob); return; }
     toast('There is no photo on the clipboard. Right-click or long-press the photo on the recipe site and copy it first.');
   };
   $('#photo-link').onclick = async () => {
@@ -2440,7 +2676,7 @@ async function showEditor(rawPath) {
     if (!takeRecipe(text)) toast('The clipboard has no recipe. Copy Claude\'s reply, or the recipe starting at ---, and try again.');
   };
 
-  if (!isNew) {
+  if (!isNew && !offline) {
     $('#del').onclick = async () => {
       const ok = await ask({
         title: `Delete ${e.title}?`,
@@ -2454,6 +2690,7 @@ async function showEditor(rawPath) {
         if (e.driveImage) await drive.trash(e.driveImage.id).catch(() => {});
         S.recipes.delete(e.path);
         S.dirty = false;
+        dropDraft();
         toast(`${e.title} moved to the Google Drive trash.`);
         go('#/');
       } catch (err) { toast(err.message); renderAccount(); }
@@ -2486,6 +2723,15 @@ async function showEditor(rawPath) {
       });
       if (!goOn) return;
     }
+    // Opened offline: get the Drive side first, now that there may be a connection.
+    if (S.live !== 'on') {
+      if (!navigator.onLine) { toast("You're offline. Your changes stay on this device: save again when you're back online."); return; }
+      try { await drive.renewIfNeeded(); } catch (err) { toast(err.message); renderAccount(); return; }
+      await goLive();
+      if (S.live !== 'on') return;
+      if (!isNew) e = S.recipes.get(e.path) || e;
+    }
+    if (!isNew && !e.driveId) { toast('This recipe is no longer in Google Drive. Copy your text before leaving.'); return; }
     const newPath = `${st.folder}/${file}`;
     if ((isNew || newPath !== e.path) && S.recipes.has(newPath)) {
       toast(`A recipe called ${file}.cook already exists in ${folderLabel(st.folder)}.`);
@@ -2564,6 +2810,7 @@ async function showEditor(rawPath) {
         if (!isNew && newPath !== e.path) S.drive.files.delete(`${e.path}.cook`);
       }
       S.dirty = false;
+      dropDraft();
       toast('Saved to Google Drive. Friends see it after the next hourly update.');
       go(`#/r/${encPath(newPath)}`);
     } catch (err) {

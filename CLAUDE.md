@@ -18,6 +18,13 @@ folders use the same files.
     a bottom sheet with two tabs on phones, a wide panel with both side by
     side on bigger screens, recipe view with scaling and timers,
     cook mode (`#/cook/<path>`), editor.
+  - New and Edit go to Claude: a `claude.ai/new?q=` link with the start of
+    the request typed in (the folder being browsed, or the recipe's path).
+    Claude writes with the cooklang-recipe skill and saves through the
+    connector. Without `authUrl`, offline, or when the connector does not
+    answer, they open the editor instead. The editor is also New blank recipe
+    in the account menu and Edit file in the recipe's ⋯ menu (with Share,
+    Print and Change photo); it keeps unsaved work as a draft on the device.
   - Cook mode: the recipe page's chef hat button opens it. Step 0 is the mise
     en place (servings, ingredients and tools as ticks, shared with the
     recipe page), then one step at a time (swipe or buttons, arrow keys) or
