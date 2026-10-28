@@ -84,8 +84,13 @@ folders use the same files.
   to Google: sign in once per device, the Worker holds Google's refresh token
   (encrypted in KV) and trades the device's pass for one-hour tokens. The site
   uses it when `authUrl` is set (repo variable `AUTH_URL`), else the one-hour
-  token flow. Setup in `connector/README.md`. Will also become the recipes
-  connector (MCP) for Claude.
+  token flow. It is also the recipes connector for Claude (MCP at `/mcp`,
+  `src/mcp.js`): Claude connects with OAuth (an Allow page, then Google;
+  only Jens's account, only Claude's addresses) and gets list_folders,
+  find_recipes, read_recipe, save_recipe (in place, refused when the version
+  changed or the house style fails: `src/lint.js` ports cooklint and reads
+  its word lists from `tools/cooklint.py`) and move_recipe. Setup in
+  `connector/README.md`.
 - `tests/e2e.mjs`: Playwright tests against a running site, with an in-memory
   fake of the Google Drive API for the editor.
 

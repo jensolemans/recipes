@@ -35,15 +35,15 @@ the same name) and it cannot save photos.
 - [x] **Stay signed in.** Sign in once per device; the Worker keeps Google's
   long-lasting key, encrypted, and hands out one-hour keys. Google app set to
   In production (unverified, no logo, so no review needed).
-- [ ] **Connector, reading.** Claude signs in with Google once (only Jens's
+- [x] **Connector, reading.** Claude signs in with Google once (only Jens's
   account). Tools: `list_folders` (folder tree and course to folder),
   `find_recipes` (title, tag, text), `read_recipe` (text, has a photo, site
   link). The connector's instructions tell Claude to always use the
   `cooklang-recipe` skill, so any chat works without a Project.
-- [ ] **Connector, saving.** `save_recipe` for new recipes and edits in place
+- [x] **Connector, saving.** `save_recipe` for new recipes and edits in place
   (same file, so Drive keeps its version history), refused when the file
-  changed since Claude read it, checked with the Cooklang parser and the main
-  `cooklint` rules first. `move_recipe` moves the photo along. No delete:
+  changed since Claude read it, checked first with the `cooklint` rules
+  (ported to JavaScript, word lists read from `tools/cooklint.py`). `move_recipe` moves the photo along. No delete:
   that stays in the app.
 - [ ] **Connector, photos.** `set_photo` from a recipe page or image link,
   saved as `<same name>.jpg`. The free plan's 10 ms of CPU per request is too

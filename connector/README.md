@@ -1,8 +1,9 @@
 # Recipes Worker
 
-A small Cloudflare Worker (free plan) next to the static site. For now it
-keeps the site signed in to Google: sign in once per device and it never runs
-out. Later it also becomes the recipes connector for Claude.
+A small Cloudflare Worker (free plan) next to the static site. It keeps the
+site signed in to Google (sign in once per device and it never runs out), and
+it is the recipes connector for Claude: any Claude chat, on the phone or the
+laptop, can find, read, save and move recipes in the Drive folder.
 
 How it works is described at the top of `src/index.js`. The site uses it when
 `authUrl` is set (repo variable `AUTH_URL`, or `authUrl` in `local.json`);
@@ -49,6 +50,18 @@ without it, the site signs in with Google for an hour at a time as before.
    variables, Actions, Variables) with the Worker's address, and the same as
    `"authUrl"` in `local.json`. Then sign in once on each device.
 
+## Connect Claude
+
+In claude.ai: Settings, Connectors, Add custom connector. Name `Recipes`,
+URL `https://recipes-connector.recipes-connector.workers.dev/mcp`. Connect:
+Allow, then Google. The phone app picks it up from the account.
+
+Tools: `list_folders`, `find_recipes`, `read_recipe`, `save_recipe` (new
+recipes and edits in place; refused when the recipe changed since Claude read
+it, or when it fails the house style of `tools/cooklint.py`, whose rules
+`src/lint.js` ports), `move_recipe` (the photo moves along). No delete.
+The connector's instructions tell Claude to use the cooklang-recipe skill.
+
 ## Day to day
 
 - Deploy changes: `npx wrangler deploy` in this folder.
@@ -61,5 +74,8 @@ without it, the site signs in with Google for an hour at a time as before.
   To sign out everywhere, remove the app in your Google account's
   third-party access page.
 - Local run: `npx wrangler dev`, with the secrets in `.dev.vars` (not
-  committed). `GOOGLE_AUTH_URL` and `GOOGLE_TOKEN_URL` there point it at a
-  fake Google for testing.
+  committed). `GOOGLE_AUTH_URL`, `GOOGLE_TOKEN_URL`, `DRIVE_API`,
+  `DRIVE_UPLOAD`, `GDRIVE_FOLDER_ID` and `PUBLIC_URL` there point it at a
+  fake Google and Drive for testing. Never test against the real folder.
+- On Windows, stopping `wrangler dev` from a background task can leave its
+  `workerd` processes running on the port; stop the whole process tree.

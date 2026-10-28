@@ -1,8 +1,12 @@
 // The recipes connector for Claude: MCP over plain HTTP POST (JSON in, JSON
-// out, no streaming), at /mcp behind the OAuth library. The tools read Jens's
-// recipe folder in Google Drive with his own Google key.
+// out, no streaming), at /mcp behind the OAuth library. The tools read and
+// save Jens's recipe folder in Google Drive with his own Google key.
+
+import { lint, rulesFrom } from './lint.js';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+const FILE_FIELDS = 'id,name,parents,md5Checksum,modifiedTime';
 const FOLDER = 'application/vnd.google-apps.folder';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26'];
 const SKIP_TOP = new Set(['config', 'tools']);
@@ -12,7 +16,9 @@ const INSTRUCTIONS = `Jens's Cooklang recipe collection, in his Google Drive. Ea
 
 Whenever you write, convert or change a recipe, use the cooklang-recipe skill and follow it completely: it holds Jens's style, units and frontmatter rules. Read the current recipe with read_recipe before changing it, and keep everything the request does not ask to change.
 
-Saving is not available yet. Give the finished recipe in one cooklang code block, with the folder and file name it belongs in, so Jens can paste it into the site's editor.`;
+Saving: save_recipe checks the recipe against the house style (tools/cooklint.py) and refuses it with a list of problems; fix them and save again. For a change to an existing recipe, pass the version read_recipe gave. For a new recipe, pick the folder with list_folders and name the file after the title in snake_case; if that name is taken, ask Jens whether to replace it, use another name or skip. After saving, give Jens the link to the recipe.
+
+Photos cannot be added through here yet: for a recipe without one, give Jens the "Add photo" link that save_recipe returns.`;
 
 const TOOLS = [
   {
@@ -45,6 +51,35 @@ const TOOLS = [
       required: ['path'],
     },
     annotations: { readOnlyHint: true },
+  },
+  {
+    name: 'save_recipe',
+    title: 'Save a recipe',
+    description: 'Saves a recipe to Drive: a new one, or a change to an existing one (in place, so Drive keeps the old version in its history). Checks the house style first and refuses with a list of problems if it does not pass. Write the text with the cooklang-recipe skill.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Folder and snake_case file name without .cook, for example "05 Mains/Curry/dal_tadka". The folder must exist.' },
+        text: { type: 'string', description: 'The whole recipe: YAML frontmatter and Cooklang.' },
+        version: { type: 'string', description: 'For a change to an existing recipe: the version read_recipe gave. Leave out for a new recipe.' },
+      },
+      required: ['path', 'text'],
+    },
+    annotations: { destructiveHint: false, idempotentHint: true },
+  },
+  {
+    name: 'move_recipe',
+    title: 'Move or rename a recipe',
+    description: 'Moves a recipe to another folder and/or gives it a new file name. Its photo moves along.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'The recipe now, for example "05 Mains/dal".' },
+        to: { type: 'string', description: 'A folder ("05 Mains/Curry") or a folder and new name ("05 Mains/Curry/dal_tadka").' },
+      },
+      required: ['path', 'to'],
+    },
+    annotations: { destructiveHint: false },
   },
 ];
 
@@ -130,16 +165,69 @@ const RUN = {
 
   async read_recipe({ path }, drive, env) {
     const idx = await drive.index();
-    const want = clean(fromSiteLink(String(path || ''))).replace(/\.cook$/i, '');
-    let r = idx.recipes.get(want);
-    if (!r) {
-      // Just the file name, if it is unique.
-      const same = [...idx.recipes.values()].filter((x) => x.path.split('/').pop() === want.split('/').pop());
-      if (same.length === 1) r = same[0];
-      else throw userError(`No recipe at "${path}".${same.length ? ` Did you mean: ${same.map((x) => x.path).join(', ')}?` : ' Use find_recipes to look it up.'}`);
-    }
+    const r = findRecipe(idx, path);
     const text = await drive.text(r.id);
     return `Path: ${r.path}.cook\nSite: ${siteLink(env, r.path)}\nPhoto: ${r.photo ? r.photo : 'none yet'}\nVersion: ${r.md5}\n\n${text}`;
+  },
+
+  async save_recipe({ path, text, version }, drive, env) {
+    const idx = await drive.index();
+    const p = clean(fromSiteLink(String(path || ''))).replace(/\.cook$/i, '');
+    const folder = p.split('/').slice(0, -1).join('/');
+    const name = p.split('/').pop();
+    if (!folder || !idx.folders.has(folder)) throw userError(`There is no folder "${folder}". Pick one with list_folders; this tool does not make folders.`);
+    if (!/^[a-z0-9_]+$/.test(name)) throw userError(`"${name}" is not a snake_case file name. Use the title in lowercase with underscores, for example "dal_tadka".`);
+    let body = String(text || '').replace(/\r\n/g, '\n');
+    if (!body.trim()) throw userError('The recipe text is empty.');
+    if (!body.endsWith('\n')) body += '\n';
+
+    const existing = idx.recipes.get(p);
+    if (existing && !version) {
+      throw userError(`A recipe already exists at ${p}. For a change to it, read it with read_recipe and pass its version. For a new recipe, ask Jens whether to replace it, use another name, or skip.`);
+    }
+    if (existing && version !== existing.md5) {
+      throw userError(`${p} changed since you read it (maybe on the site or the phone). Read it again with read_recipe and make the change on the new version.`);
+    }
+    if (!existing && version) throw userError(`There is no recipe at ${p} any more; it may have been moved or renamed. Look it up with find_recipes.`);
+    const twin = !existing && [...idx.recipes.values()].find((r) => r.path.split('/').pop() === name);
+    if (twin) throw userError(`A recipe called ${name} is already in ${twin.folder}. Ask Jens whether this is the same recipe; if it is a different one, pick another name.`);
+
+    const rules = await drive.rules(idx);
+    const check = rules
+      ? lint(body, p, rules, (ref) => idx.recipes.has(ref))
+      : { errors: [], warnings: ['tools/cooklint.py was not found, so the house style was not checked'] };
+    const bullets = (xs) => xs.map((x) => `- ${x}`).join('\n');
+    if (check.errors.length) {
+      throw userError(`Not saved. Fix these house style problems and save again:\n${bullets(check.errors)}${check.warnings.length ? `\n\nAlso worth fixing:\n${bullets(check.warnings)}` : ''}`);
+    }
+    const saved = existing ? await drive.update(existing.id, body) : await drive.create(`${name}.cook`, idx.folders.get(folder), body);
+    const lines = [
+      `${existing ? 'Saved the change to' : 'Saved the new recipe'} ${p}.cook.`,
+      `Site: ${siteLink(env, p)}`,
+      `Version: ${saved.md5Checksum}`,
+      existing?.photo ? `Photo: ${existing.photo}` : `Photo: none yet. Add photo: ${siteLink(env, p, 'edit')}`,
+    ];
+    if (check.warnings.length) lines.push('', 'House style notes (saved anyway):', bullets(check.warnings));
+    return lines.join('\n');
+  },
+
+  async move_recipe({ path, to }, drive, env) {
+    const idx = await drive.index();
+    const r = findRecipe(idx, path);
+    const dest = clean(fromSiteLink(String(to || ''))).replace(/\.cook$/i, '');
+    const intoFolder = idx.folders.has(dest);
+    const toFolder = intoFolder ? dest : dest.split('/').slice(0, -1).join('/');
+    const name = intoFolder ? r.path.split('/').pop() : dest.split('/').pop();
+    if (!toFolder || !idx.folders.has(toFolder)) throw userError(`There is no folder "${toFolder || dest}". Pick one with list_folders.`);
+    if (!/^[a-z0-9_]+$/.test(name)) throw userError(`"${name}" is not a snake_case file name.`);
+    const np = `${toFolder}/${name}`;
+    if (np === r.path) return `${r.path} is already there.`;
+    if (idx.recipes.has(np)) throw userError(`There is already a recipe at ${np}. Ask Jens what to do.`);
+    const from = idx.folders.get(r.folder);
+    const into = idx.folders.get(toFolder);
+    await drive.move(r.id, { name: `${name}.cook`, from, to: into });
+    if (r.photoId) await drive.move(r.photoId, { name: name + r.photo.slice(r.photo.lastIndexOf('.')), from, to: into });
+    return `Moved ${r.path}.cook to ${np}.cook${r.photoId ? ', with its photo' : ''}.\nSite: ${siteLink(env, np)}`;
   },
 };
 
@@ -150,6 +238,7 @@ class Drive {
     this.env = env;
     this.access = access;
     this.api = env.DRIVE_API || DRIVE;
+    this.upload = env.DRIVE_UPLOAD || UPLOAD;
   }
 
   async get(path, params = {}, raw = false) {
@@ -196,7 +285,7 @@ class Drive {
     const ids = [...folders.values()];
     for (let i = 0; i < ids.length; i += 40) {
       const parents = ids.slice(i, i + 40).map((id) => `'${id}' in parents`).join(' or ');
-      files.push(...await this.list(`(${parents}) and trashed = false and mimeType != '${FOLDER}'`, 'id,name,parents,md5Checksum,modifiedTime'));
+      files.push(...await this.list(`(${parents}) and trashed = false and mimeType != '${FOLDER}'`, FILE_FIELDS));
     }
     const recipes = new Map();
     const images = new Map();
@@ -210,10 +299,14 @@ class Drive {
         recipes.set(path, { id: f.id, path, folder, md5: f.md5Checksum, modified: f.modifiedTime, photo: '' });
       } else {
         const ext = IMAGE_EXTS.find((e) => lower.endsWith(e));
-        if (ext) images.set(at(f.name.slice(0, -ext.length)), f.name);
+        if (ext) images.set(at(f.name.slice(0, -ext.length)), f);
       }
     }
-    for (const r of recipes.values()) r.photo = images.get(r.path) || '';
+    for (const r of recipes.values()) {
+      const img = images.get(r.path);
+      r.photo = img?.name || '';
+      r.photoId = img?.id || '';
+    }
     this.cached = { folders, recipes, extra, byId: new Map([...recipes.values()].map((r) => [r.id, r])) };
     return this.cached;
   }
@@ -225,6 +318,44 @@ class Drive {
     return new Set(hits.map((f) => f.id).filter((id) => idx.byId.has(id)));
   }
 
+  async send(url, method, body, type) {
+    const { token } = await this.access();
+    const res = await fetch(url, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': type }, body });
+    if (!res.ok) throw new Error(`Drive ${res.status}`);
+    this.cached = null;
+    return res.json();
+  }
+
+  create(name, parent, text) {
+    const boundary = `recipe${crypto.randomUUID()}`;
+    const meta = JSON.stringify({ name, parents: [parent], mimeType: 'text/plain' });
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${text}\r\n--${boundary}--`;
+    return this.send(`${this.upload}/files?uploadType=multipart&fields=${FILE_FIELDS}`, 'POST', body, `multipart/related; boundary=${boundary}`);
+  }
+
+  update(id, text) {
+    return this.send(`${this.upload}/files/${id}?uploadType=media&fields=${FILE_FIELDS}`, 'PATCH', text, 'text/plain; charset=UTF-8');
+  }
+
+  move(id, { name, from, to }) {
+    const q = new URLSearchParams({ fields: FILE_FIELDS });
+    if (to !== from) { q.set('addParents', to); q.set('removeParents', from); }
+    return this.send(`${this.api}/files/${id}?${q}`, 'PATCH', JSON.stringify({ name }), 'application/json');
+  }
+
+  /** The house style word lists, from tools/cooklint.py. */
+  async rules(idx) {
+    const src = await this.lintSource(idx);
+    return src ? rulesFrom(src) : null;
+  }
+
+  async lintSource(idx) {
+    const tools = idx.extra.get('tools');
+    if (!tools) return '';
+    const [file] = await this.list(`'${tools}' in parents and name = 'cooklint.py' and trashed = false`, 'id');
+    return file ? this.text(file.id) : '';
+  }
+
   async text(id) {
     const res = await this.get(`/files/${id}`, { alt: 'media' }, true);
     return res.text();
@@ -232,11 +363,7 @@ class Drive {
 
   /** The course to folder map, read from FOLDER_FOR_COURSE in tools/cooklint.py. */
   async courses(idx) {
-    const tools = idx.extra.get('tools');
-    if (!tools) return {};
-    const [lint] = await this.list(`'${tools}' in parents and name = 'cooklint.py' and trashed = false`, 'id');
-    if (!lint) return {};
-    const src = await this.text(lint.id);
+    const src = await this.lintSource(idx);
     const block = src.match(/FOLDER_FOR_COURSE\s*=\s*\{([\s\S]*?)\}/);
     const out = {};
     for (const [, c, f] of (block?.[1] || '').matchAll(/'([^']+)'\s*:\s*'([^']+)'/g)) out[c] = f;
@@ -260,4 +387,14 @@ function fromSiteLink(s) {
   try { return decodeURIComponent(m[1]); } catch { return m[1]; }
 }
 
-const siteLink = (env, path) => `${String(env.SITE_URL || '').replace(/\/?$/, '/')}#/r/${path.split('/').map(encodeURIComponent).join('/')}`;
+const siteLink = (env, path, view = 'r') => `${String(env.SITE_URL || '').replace(/\/?$/, '/')}#/${view}/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+/** A recipe by path, site link or (if unique) just its file name. */
+function findRecipe(idx, path) {
+  const want = clean(fromSiteLink(String(path || ''))).replace(/\.cook$/i, '');
+  const r = idx.recipes.get(want);
+  if (r) return r;
+  const same = [...idx.recipes.values()].filter((x) => x.path.split('/').pop() === want.split('/').pop());
+  if (same.length === 1) return same[0];
+  throw userError(`No recipe at "${path}".${same.length ? ` Did you mean: ${same.map((x) => x.path).join(', ')}?` : ' Use find_recipes to look it up.'}`);
+}
