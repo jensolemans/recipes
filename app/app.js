@@ -131,7 +131,7 @@ async function boot() {
   document.title = title;
   $$('[data-brand]').forEach((el) => { el.textContent = title; });
 
-  drive.configure(S.config.clientId);
+  drive.configure(S.config.clientId, S.config.authUrl);
   if (drive.enabled()) {
     S.shop = shop.createSync({ drive, configFolder, onChange: onShopChange });
     window.addEventListener('online', () => { if (drive.wasSignedIn()) S.shop.sync(); });
@@ -287,10 +287,10 @@ async function signInFlow() {
     await drive.signIn();
     watchSession();
     S.shop?.sync();
-    if (S.live === 'on') { renderAccount(); toast('Signed in again for another hour.'); return; }
+    if (S.live === 'on') { renderAccount(); toast(drive.lasting() ? 'Signed in again.' : 'Signed in again for another hour.'); return; }
     await goLive();
   } catch (e) {
-    toast(e.message || 'Sign-in failed.');
+    if (!e.quiet) toast(e.message || 'Sign-in failed.');
     renderAccount();
   }
 }

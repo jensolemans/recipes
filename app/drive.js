@@ -1,7 +1,13 @@
-// Google sign-in (Google Identity Services token flow) and the Google Drive
-// calls the editor needs. Everything runs in the browser with the signed-in
-// user's own token: no server, and only someone who can edit the Drive folder
-// can change anything.
+// Google sign-in and the Google Drive calls the editor needs. The Drive calls
+// run in the browser with the signed-in user's own token, so only someone who
+// can edit the Drive folder can change anything.
+//
+// Two ways to sign in:
+// - With `authUrl` (the recipes Worker in connector/): sign in once per
+//   device. The Worker keeps Google's long-lasting key and this device keeps a
+//   pass that it trades for a fresh one-hour token whenever it needs one, so
+//   the sign-in never runs out.
+// - Without it: Google Identity Services token flow, one hour at a time.
 
 const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -10,9 +16,13 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const FILE_FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,parents,trashed';
 const STORE_KEY = 'recipes.session';
 
+const PASS_KEY = 'recipes.pass';
+
 let clientId = '';
+let authUrl = '';
 let tokenClient = null;
 let session = null; // { token, expires, email, name }
+let pass = ''; // this device's pass for the Worker, if signed in through it
 
 // localStorage, so closing the tab (or the phone discarding it) keeps the
 // sign-in for the rest of its hour.
@@ -25,29 +35,43 @@ const hint = {
   set(v) { try { v ? localStorage.setItem('recipes.email', v) : localStorage.removeItem('recipes.email'); } catch { /* ignore */ } },
 };
 
-export function configure(id) {
+const passStore = {
+  get() { try { return localStorage.getItem(PASS_KEY) || ''; } catch { return ''; } },
+  set(v) { try { v ? localStorage.setItem(PASS_KEY, v) : localStorage.removeItem(PASS_KEY); } catch { /* private mode */ } },
+};
+
+export function configure(id, auth = '') {
   clientId = id || '';
+  authUrl = (auth || '').replace(/\/+$/, '');
+  pass = authUrl ? passStore.get() : '';
   const saved = store.get();
-  if (saved && saved.expires > Date.now() + 60_000) session = saved;
+  // With a pass an old token is still worth keeping for the name and email:
+  // the first Drive call trades the pass for a fresh one.
+  if (saved && (pass || saved.expires > Date.now() + 60_000)) session = saved;
   else store.set(null);
+  if (pass && !session) session = { token: '', expires: 0, email: hint.get(), name: '' };
   // Load Google's script early for a returning user, so a renewal tap opens
   // the sign-in window straight away and the browser does not block it.
-  if (clientId && hint.get()) loadGis().catch(() => {});
+  if (clientId && !authUrl && hint.get()) loadGis().catch(() => {});
 }
 
-export const enabled = () => Boolean(clientId);
-export const signedIn = () => Boolean(session && session.expires > Date.now());
+export const enabled = () => Boolean(clientId || authUrl);
+export const signedIn = () => Boolean(pass || (session && session.expires > Date.now()));
 export const user = () => session;
-export const wasSignedIn = () => Boolean(hint.get());
-export const expiresAt = () => session?.expires || 0;
+export const wasSignedIn = () => Boolean(hint.get() || pass);
+/** Signed in for good on this device, through the Worker. */
+export const lasting = () => Boolean(pass);
+export const expiresAt = () => (pass ? Infinity : session?.expires || 0);
 
 /**
  * Renews the sign-in if it has ended or ends within `margin` ms. Call it
  * straight from a tap, before any other await: browsers only allow the
- * Google window to open in direct response to a tap.
+ * Google window to open in direct response to a tap. With a pass it renews
+ * quietly and never needs the tap.
  */
 export async function renewIfNeeded(margin = 5 * 60_000) {
-  if (session && session.expires > Date.now() + margin) return;
+  if (session?.token && session.expires > Date.now() + margin) return;
+  if (pass) { await refresh(); return; }
   await signIn();
 }
 
@@ -65,6 +89,7 @@ function loadGis() {
 
 /** Opens the Google sign-in popup. Resolves with the session. */
 export async function signIn() {
+  if (authUrl) return signInWorker();
   await loadGis();
   return new Promise((resolve, reject) => {
     tokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -94,10 +119,80 @@ export async function signIn() {
   });
 }
 
+// Sign-in through the Worker. The window goes to Google and back to the
+// Worker, which leaves a pass for this login id; this page asks for it every
+// couple of seconds. No cookies or window.opener, so it also works in Safari
+// and the home-screen app.
+let waiting = null; // the login in progress: { login, reject }
+
+async function signInWorker() {
+  const login = randomId();
+  const q = new URLSearchParams({ login, origin: location.origin });
+  if (hint.get()) q.set('hint', hint.get());
+  // Open the window before anything else: only a tap may open it.
+  const win = window.open(`${authUrl}/auth/start?${q}`, 'recipes-signin', 'width=480,height=640');
+  if (!win) throw new Error('Your browser blocked the Google sign-in window. Tap again to try once more.');
+  // A second tap starts over; the first one stops quietly.
+  waiting?.reject(Object.assign(new Error('Sign-in started again.'), { quiet: true }));
+  let stop;
+  const stopped = new Promise((_, reject) => { stop = reject; });
+  stopped.catch(() => {}); // only ever read through the race below
+  waiting = { login, reject: stop };
+  try {
+    const until = Date.now() + 5 * 60_000;
+    let got = null;
+    while (!got) {
+      await Promise.race([stopped, new Promise((r) => setTimeout(r, 1500))]);
+      if (Date.now() > until) throw Object.assign(new Error('Sign-in timed out. Tap Sign in to try again.'), { quiet: true });
+      let res;
+      try { res = await fetch(`${authUrl}/auth/redeem`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login }) }); } catch { continue; } // offline for a moment
+      if (res.status === 200) got = await res.json();
+    }
+    pass = got.pass;
+    passStore.set(pass);
+    hint.set(got.email);
+    session = { token: '', expires: 0, email: got.email, name: got.name };
+    await refresh();
+    try { win.close(); } catch { /* not ours to close any more */ }
+    return session;
+  } finally {
+    if (waiting?.login === login) waiting = null;
+  }
+}
+
+// Trades the pass for a fresh one-hour token. Calls at the same time share one trip.
+let refreshing = null;
+function refresh() {
+  refreshing ||= (async () => {
+    const res = await fetch(`${authUrl}/auth/token`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass }) });
+    const t = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      pass = ''; passStore.set(null);
+      session = null; store.set(null);
+      throw Object.assign(new Error(`${t.message || 'Your Google sign-in ended.'} Tap Sign in at the top.`), { code: 401 });
+    }
+    if (!res.ok) throw Object.assign(new Error(t.message || 'Could not renew the Google sign-in.'), { code: res.status });
+    session = { token: t.access_token, expires: Date.now() + (Number(t.expires_in) || 3600) * 1000, email: t.email, name: t.name };
+    store.set(session);
+    return session;
+  })().finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+function randomId() {
+  const b = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 export function signOut() {
-  if (session?.token && window.google?.accounts?.oauth2) {
+  if (pass) {
+    // Only this device: revoking Google's token would sign out every device.
+    fetch(`${authUrl}/auth/signout`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pass }), keepalive: true }).catch(() => {});
+  } else if (session?.token && window.google?.accounts?.oauth2) {
     try { window.google.accounts.oauth2.revoke(session.token, () => {}); } catch { /* ignore */ }
   }
+  pass = '';
+  passStore.set(null);
   session = null;
   store.set(null);
   hint.set('');
@@ -106,9 +201,12 @@ export function signOut() {
 const expired = () => Object.assign(new Error('Your Google sign-in ran out. Tap the sign-in button at the top, then try again.'), { code: 401 });
 
 // Never opens the sign-in window by itself: outside a tap the browser would
-// block it. Taps renew first with renewIfNeeded().
+// block it. Taps renew first with renewIfNeeded(). With a pass it renews
+// quietly a minute before the hour is up.
 async function ensureToken() {
-  if (!signedIn()) throw expired();
+  if (!pass) { if (!signedIn()) throw expired(); return; }
+  if (session?.token && session.expires > Date.now() + 60_000) return;
+  await refresh();
 }
 
 async function call(url, opts = {}, raw = false) {
@@ -132,7 +230,14 @@ async function call(url, opts = {}, raw = false) {
 
 async function authed(url, opts, raw) {
   await ensureToken();
-  return call(url, opts, raw);
+  try {
+    return await call(url, opts, raw);
+  } catch (e) {
+    // Google turned the token down early: with a pass, get a new one and try once more.
+    if (e.code !== 401 || !pass) throw e;
+    await refresh();
+    return call(url, opts, raw);
+  }
 }
 
 /** Can the signed-in user edit the recipe folder? */

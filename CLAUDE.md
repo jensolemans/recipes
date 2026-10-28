@@ -79,6 +79,13 @@ folders use the same files.
   recipes with rclone (service account, read only), runs build.py and deploys
   to GitHub Pages. Repo variables: `GDRIVE_FOLDER_ID`, `GOOGLE_CLIENT_ID`,
   `SITE_TITLE`; secret: `GDRIVE_SERVICE_ACCOUNT`.
+- `connector/`: a Cloudflare Worker (free plan, its own `package.json` with
+  wrangler; the site itself stays dependency-free). Keeps the site signed in
+  to Google: sign in once per device, the Worker holds Google's refresh token
+  (encrypted in KV) and trades the device's pass for one-hour tokens. The site
+  uses it when `authUrl` is set (repo variable `AUTH_URL`), else the one-hour
+  token flow. Setup in `connector/README.md`. Will also become the recipes
+  connector (MCP) for Claude.
 - `tests/e2e.mjs`: Playwright tests against a running site, with an in-memory
   fake of the Google Drive API for the editor.
 

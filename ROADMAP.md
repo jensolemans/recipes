@@ -7,6 +7,65 @@ Tick an item off in the same commit that ships it. Items are in the order to
 build them. Anything that needs a server must be free to run and easy to
 maintain (a Cloudflare Worker is the default choice).
 
+## Now: recipes with Claude
+
+Every recipe goes through Claude with Jens's `cooklang-recipe` skill, which
+holds his style and preferences. Today that means copying between the Claude
+chat and the editor for every import and every edit. The goal: Claude reads
+and saves the recipes itself, from any chat on the phone or the laptop.
+
+How it will work:
+- **Import.** Share a recipe page to the Claude app (or attach a cookbook
+  photo) and say "import". Claude writes it with the skill, picks the folder
+  from the course, saves it, adds the dish photo and replies with the link.
+- **Edit.** "Edit with Claude" on a recipe opens Claude with the recipe's path
+  typed in. Say what to change; Claude reads the file, rewrites it in Jens's
+  style and saves it in place.
+- **After cooking.** "I made the dal, too salty, do the tempering first."
+  Claude finds the recipe itself.
+- **By hand** stays possible: the current editor becomes "Edit by hand" for
+  typos and photos from the camera roll.
+
+Built as a recipes connector (MCP server) for Claude on the same free
+Cloudflare Worker that keeps the site signed in (`connector/`). Claude's
+built-in Google Drive connector was tried first: it can find, read and create
+files, but it cannot change a file's text (an edit would leave two files with
+the same name) and it cannot save photos.
+
+- [x] **Stay signed in.** Sign in once per device; the Worker keeps Google's
+  long-lasting key, encrypted, and hands out one-hour keys. Google app set to
+  In production (unverified, no logo, so no review needed).
+- [ ] **Connector, reading.** Claude signs in with Google once (only Jens's
+  account). Tools: `list_folders` (folder tree and course to folder),
+  `find_recipes` (title, tag, text), `read_recipe` (text, has a photo, site
+  link). The connector's instructions tell Claude to always use the
+  `cooklang-recipe` skill, so any chat works without a Project.
+- [ ] **Connector, saving.** `save_recipe` for new recipes and edits in place
+  (same file, so Drive keeps its version history), refused when the file
+  changed since Claude read it, checked with the Cooklang parser and the main
+  `cooklint` rules first. `move_recipe` moves the photo along. No delete:
+  that stays in the app.
+- [ ] **Connector, photos.** `set_photo` from a recipe page or image link,
+  saved as `<same name>.jpg`. The free plan's 10 ms of CPU per request is too
+  little to resize, so pick the best size the page offers; build.py already
+  makes the site's small versions. Photos attached in the chat cannot reach
+  the connector: Claude replies with a link that opens the recipe in the app
+  on Paste photo.
+- [ ] **Claude buttons in the app.** "Edit with Claude" on recipes and New
+  opening Claude (`claude.ai/new?q=...`) with the request typed in. Check that
+  the link opens the Claude app on the phone. The editor stays as "Edit by
+  hand".
+- [ ] **Share to the app.** Share a link from the phone's share sheet straight
+  into the app (Web Share Target in the manifest), for links that should go
+  in by hand. *Mela, Crouton, ReciMe.*
+- [ ] **Recipes without a photo.** A filter or badge, so every recipe gets
+  one.
+- [ ] **Tidy up.** Deploy the Worker from GitHub Actions when `connector/`
+  changes, and add tests for the tools against the fake Drive.
+
+Covers what used to be planned here as import from a link, from social media
+and from a photo in the browser: Claude reads those itself.
+
 ## Next
 
 Mostly front end, quick wins, used every week.
@@ -59,22 +118,6 @@ The planning features, built the same way as the shopping list.
   parsed recipes already list their ingredients.
 - [ ] **What to cook tonight.** A random pick within the current filters.
   *Paprika, Mela, Samsung Food.*
-
-## After that
-
-Importing without the laptop. Needs one small free server-side helper.
-
-- [ ] **Import from a link in the browser.** Paste a URL in the editor and get
-  a draft recipe. Read the schema.org Recipe data from the page through a
-  Cloudflare Worker (browsers block reading other sites directly), then
-  convert to Cooklang. *Every app listed above.*
-- [ ] **Import from social media.** Instagram and TikTok links, from the
-  caption or description. *ReciMe, Samsung Food.*
-- [ ] **Import from a photo or PDF in the browser.** A cookbook page photo
-  becomes a draft recipe, as `/import-recipe` does on the laptop.
-  *Mela, Crouton, ReciMe.*
-- [ ] **Share to the app.** Share a link from the phone's share sheet straight
-  into the editor (Web Share Target in the manifest). *Mela, Crouton, ReciMe.*
 
 ## Later
 

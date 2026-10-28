@@ -60,11 +60,11 @@ const fakeGis = (route) => route.fulfill({ contentType: 'text/javascript', body:
   } } };` });
 
 // Points the site at the fake Drive's root folder, whatever local.json says,
-// so the editor tests never see the real folder ID.
+// so the editor tests never see the real folder ID or the real Worker.
 async function fakeConfig(route) {
   const res = await route.fetch();
   const data = await res.json();
-  data.config = { ...data.config, folderId: 'ROOT', clientId: data.config?.clientId || 'test-client' };
+  data.config = { ...data.config, folderId: 'ROOT', clientId: data.config?.clientId || 'test-client', authUrl: '' };
   return route.fulfill({ response: res, json: data });
 }
 
@@ -851,6 +851,56 @@ const newPage = async (opts = {}) => {
   ok((await page.$$('.card')).length === online, `home opens without a connection (${online} recipes)`);
   await page.evaluate(() => { location.hash = '#/r/05%20Mains/Pasta/lasagna?s=4'; });
   ok(await page.waitForSelector('.recipe .step', { timeout: 8000 }).then(() => true, () => false), 'a recipe opens and scales without a connection');
+  await ctx.close();
+}
+
+// 10. signed in for good through the recipes Worker
+{
+  const AUTH = 'https://auth.test';
+  const worker = { tokens: 0, redeems: 0, signouts: 0, pass: 'p'.repeat(43) };
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
+  await ctx.route('https://www.googleapis.com/**', driveRoute);
+  await ctx.route('https://accounts.google.com/gsi/client', fakeGis);
+  await ctx.route('**/data/recipes.json', async (route) => {
+    const res = await route.fetch();
+    const data = await res.json();
+    data.config = { ...data.config, folderId: 'ROOT', clientId: 'test-client', authUrl: AUTH };
+    return route.fulfill({ response: res, json: data });
+  });
+  await ctx.route(`${AUTH}/**`, (route) => {
+    const p = new URL(route.request().url()).pathname;
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) });
+    if (p === '/auth/start') return route.fulfill({ contentType: 'text/html', body: '<h1>Signed in</h1>' });
+    // The first ask comes before Google is done.
+    if (p === '/auth/redeem') return ++worker.redeems < 2 ? json({ waiting: true }, 202) : json({ pass: worker.pass, email: 'jens@example.com', name: 'Jens Olemans' });
+    if (p === '/auth/token') return json({ access_token: `w${++worker.tokens}`, expires_in: 3600, email: 'jens@example.com', name: 'Jens Olemans' });
+    if (p === '/auth/signout') { worker.signouts++; return json({ ok: true }); }
+    return route.fulfill({ status: 404 });
+  });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(`${BASE}/#/`);
+  await page.waitForSelector('#signin');
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.click('#signin')]);
+  ok(popup.url().startsWith(`${AUTH}/auth/start?login=`), 'sign-in opens the Worker in a new window');
+  await page.waitForSelector('a[href="#/new"]', { timeout: 10000 });
+  ok(await page.evaluate(() => localStorage.getItem('recipes.pass')) === worker.pass, 'signed in through the Worker, pass kept on this device');
+  ok(worker.tokens === 1, 'one token after sign-in');
+
+  // The hour runs out while the page is closed: it comes back signed in, no window.
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem('recipes.session'));
+    localStorage.setItem('recipes.session', JSON.stringify({ ...s, expires: Date.now() - 1000 }));
+  });
+  await page.reload();
+  await page.waitForSelector('a[href="#/new"]', { timeout: 10000 });
+  ok(worker.tokens === 2 && !(await page.$('#signin')), 'an hour later it renews quietly, no Renew sign-in');
+  const pages = ctx.pages().length;
+  await page.click('summary.avatar');
+  await page.click('[data-action="signout"]');
+  await page.waitForSelector('#signin');
+  ok(worker.signouts === 1 && await page.evaluate(() => !localStorage.getItem('recipes.pass')), 'sign out forgets the pass on this device only');
+  ok(ctx.pages().length === pages, 'no extra sign-in windows');
   await ctx.close();
 }
 

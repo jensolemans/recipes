@@ -118,6 +118,7 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
     config = {
         "title": os.environ.get("SITE_TITLE") or "Recipes",
         "clientId": os.environ.get("GOOGLE_CLIENT_ID", ""),
+        "authUrl": os.environ.get("AUTH_URL", ""),
         "folderId": os.environ.get("GDRIVE_FOLDER_ID", ""),
         "publishUrl": f"https://github.com/{repo}/actions/workflows/publish.yml" if repo else "",
     }

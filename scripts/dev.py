@@ -11,6 +11,7 @@ not committed):
   recipesDir  path to the synced "Cooklang Recipes" folder
   clientId    Google sign-in client ID (optional, enables "Sign in" locally)
   folderId    Google Drive folder ID (needed for signing in)
+  authUrl     address of the recipes Worker (optional, keeps you signed in)
   title       site title
 """
 import json
@@ -51,6 +52,7 @@ if not recipes_dir.is_dir():
 
 os.environ["SITE_TITLE"] = settings.get("title") or "Recipes"
 os.environ["GOOGLE_CLIENT_ID"] = settings.get("clientId", "")
+os.environ["AUTH_URL"] = settings.get("authUrl", "")
 os.environ["GDRIVE_FOLDER_ID"] = settings.get("folderId", "")
 
 lock = threading.Lock()
