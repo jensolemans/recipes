@@ -59,7 +59,6 @@ const S = {
   sort: saved.get('sort', 'recent'),
   browse: { at: '', tab: 'folders' }, // phone browse sheet: folder being shown, open tab
   dirty: false,
-  ignoreHash: false,
   currentHash: '',
   checked: new Map(), // path -> Set of checked ingredient keys
   shop: null, // shopping list sync, when sign-in is set up
@@ -177,7 +176,6 @@ function parseHash() {
 }
 
 async function onHashChange() {
-  if (S.ignoreHash) { S.ignoreHash = false; return; }
   if (S.dirty) {
     const leave = await ask({
       title: 'Leave without saving?',
@@ -185,7 +183,7 @@ async function onHashChange() {
       actions: [{ label: 'Keep editing', value: false }, { label: 'Discard changes', value: true, danger: true }],
     });
     if (!leave) {
-      S.ignoreHash = true;
+      // replaceState fires no hashchange, so the next click on a link counts again.
       history.replaceState(null, '', S.currentHash || '#/');
       return;
     }
@@ -1269,6 +1267,8 @@ const BULB_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5h
 const LIST_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="4.5" width="15" height="4.5" rx="1.5"/><rect x="4.5" y="11.5" width="15" height="8" rx="1.5"/></svg>';
 const CARDS_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7.5" y="4.5" width="9" height="15" rx="2"/><path d="M4 7v10M20 7v10"/></svg>';
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const PASTE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 3h6v4H9z"/></svg>';
+const CLEAR_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 20H8.5l-4.2-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l4.6 4.6a1 1 0 0 1 0 1.4L11 20M18 13l-6.3-6.3"/></svg>';
 const LEFT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>';
 const RIGHT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
 const PRINT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4.5h10V9"/><path d="M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17"/><rect x="7" y="14" width="10" height="5.5" rx="1"/></svg>';
@@ -2238,11 +2238,11 @@ tags: []
 `;
 
 const SNIPPETS = {
-  ingredient: { label: 'Ingredient', text: '@ingredient{100%g}', select: [1, 11] },
-  cookware: { label: 'Equipment', text: '#pan{}', select: [1, 4] },
-  timer: { label: 'Timer', text: '~{10%minutes}', select: [2, 4] },
-  section: { label: 'Section', text: '\n== Section ==\n', select: [4, 11] },
-  note: { label: 'Note', text: '\n> ', select: [3, 3] },
+  ingredient: { label: 'Ingredient', sym: '@', text: '@ingredient{100%g}', select: [1, 11] },
+  cookware: { label: 'Equipment', sym: '#', text: '#pan{}', select: [1, 4] },
+  timer: { label: 'Timer', sym: '~', text: '~{10%minutes}', select: [2, 4] },
+  section: { label: 'Section', sym: '==', text: '\n== Section ==\n', select: [4, 11] },
+  note: { label: 'Note', sym: '>', text: '\n> ', select: [3, 3] },
 };
 
 function resizeImage(file, max = 1600) {
@@ -2455,41 +2455,51 @@ async function showEditor(rawPath) {
   const markDirty = () => { S.dirty = true; $('#save-state').textContent = 'Unsaved changes'; keepDraft(); };
 
   $('#main').innerHTML = `
-    <section class="editor">
+    <section class="editor" data-tab="text">
       <div class="editor-bar">
-        <a class="link-btn" href="${isNew ? '#/' : `#/r/${encPath(e.path)}`}">Cancel</a>
         <h1>${isNew ? 'New recipe' : `Edit ${esc(e.title)}`}</h1>
-        <span class="save-state" id="save-state" aria-live="polite"></span>
-        ${isNew || offline ? '' : '<button class="btn btn-quiet btn-sm btn-danger" id="del">Delete</button>'}
-        <button class="btn btn-primary" id="save">Save</button>
+        <div class="editor-tabs" role="tablist">
+          <button role="tab" aria-selected="false" data-tab="details">Details</button>
+          <button role="tab" aria-selected="true" data-tab="text">Text</button>
+          <button role="tab" aria-selected="false" data-tab="preview">Preview</button>
+        </div>
+        <a class="sheet-x editor-x" href="${isNew ? '#/' : `#/r/${encPath(e.path)}`}" aria-label="Close" title="Close">${CLOSE_ICON}</a>
       </div>
-      <div class="editor-fields">
-        <label class="field"><span>Category</span>
-          <select id="folder">${folders.map((f) => `<option value="${esc(f)}" ${f === st.folder ? 'selected' : ''}>${esc(folderLabel(f))}</option>`).join('')}</select>
-        </label>
-        <label class="field field-file"><span>File name</span>
-          <span class="file-input"><input id="file" value="${esc(st.file)}" spellcheck="false" autocomplete="off" placeholder="from the title"><span>.cook</span></span>
-        </label>
-        <div class="field field-photo"><span>Photo</span>
-          <div class="photo-row">
-            <span class="photo-thumb" id="photo-thumb">${st.photoUrl ? `<img src="${esc(st.photoUrl)}" alt="">` : 'None'}</span>
-            <label class="btn btn-quiet btn-sm">Choose photo<input type="file" id="photo" accept="image/*" hidden></label>
-            <button class="btn btn-quiet btn-sm" id="paste-photo" title="Copy a photo on a recipe site first">Paste photo</button>
-            <button class="btn btn-quiet btn-sm" id="photo-link">Photo link</button>
-          </div>
+      <div class="editor-head">
+        <span class="photo-thumb" id="photo-thumb">${st.photoUrl ? `<img src="${esc(st.photoUrl)}" alt="">` : 'No photo'}</span>
+        <div class="photo-btns">
+          <label class="btn btn-quiet btn-sm">Choose<input type="file" id="photo" accept="image/*" hidden></label>
+          <button class="btn btn-quiet btn-sm" id="paste-photo" title="Copy a photo on a recipe site first">Paste</button>
+          <button class="btn btn-quiet btn-sm" id="photo-link" title="The web address of a photo">Link</button>
+        </div>
+        <div class="editor-fields">
+          <label class="field"><span>Category</span>
+            <select id="folder">${folders.map((f) => `<option value="${esc(f)}" ${f === st.folder ? 'selected' : ''}>${esc(folderLabel(f))}</option>`).join('')}</select>
+          </label>
+          <label class="field field-file"><span>File name</span>
+            <span class="file-input"><input id="file" value="${esc(st.file)}" spellcheck="false" autocomplete="off" placeholder="from the title"><span>.cook</span></span>
+          </label>
         </div>
       </div>
-      <div class="editor-tabs" role="tablist">
-        <button role="tab" aria-selected="true" data-tab="write">Write</button>
-        <button role="tab" aria-selected="false" data-tab="preview">Preview</button>
+      <div class="toolbar" id="toolbar" aria-label="Insert">
+        <span class="toolbar-label">Insert</span>
+        ${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}"><span class="tool-sym">${esc(s.sym)}</span>${s.label}</button>`).join('')}
+        <span class="toolbar-gap"></span>
+        <button class="tool-btn" id="paste-recipe" title="Paste a recipe, or Claude\'s whole reply"><span class="tool-sym">${PASTE_ICON}</span>Paste recipe</button>
+        <button class="tool-btn" id="clear-src" title="Empty the recipe text, ready to paste"><span class="tool-sym">${CLEAR_ICON}</span>Clear text</button>
       </div>
-      <div class="editor-panes" data-tab="write">
+      <div class="editor-panes">
         <div class="pane pane-write">
-          <div class="toolbar" aria-label="Insert"><button class="tool-btn tool-paste" id="paste-recipe" title="Paste a recipe, or Claude\'s whole reply">Paste recipe</button><button class="tool-btn" id="clear-src" title="Empty the recipe text, ready to paste">Clear text</button>${Object.entries(SNIPPETS).map(([k, s]) => `<button class="tool-btn" data-snip="${k}">${s.label}</button>`).join('')}</div>
           <textarea id="src" spellcheck="true" aria-label="Recipe in Cooklang"></textarea>
           <div class="issues" id="issues"></div>
         </div>
         <div class="pane pane-preview" id="preview"></div>
+      </div>
+      <div class="editor-save">
+        ${isNew || offline ? '' : '<button class="btn btn-quiet btn-sm btn-danger" id="del">Delete recipe</button>'}
+        <span class="save-state" id="save-state" aria-live="polite"></span>
+        <button class="ins-btn" id="ins-btn" aria-label="Insert" aria-expanded="false" aria-controls="toolbar" title="Insert">@#</button>
+        <button class="btn btn-primary" id="save">Save</button>
       </div>
     </section>`;
 
@@ -2577,17 +2587,47 @@ async function showEditor(rawPath) {
     ta.setSelectionRange(a + selA, a + selB);
     markDirty(); debounced();
   }
-  $$('.tool-btn').forEach((b) => {
-    b.onclick = () => { const s = SNIPPETS[b.dataset.snip]; insert(s.text, s.select[0], s.select[1]); };
+  $$('.tool-btn[data-snip]').forEach((b) => {
+    b.onclick = () => { const s = SNIPPETS[b.dataset.snip]; insert(s.text, s.select[0], s.select[1]); setIns(false); };
   });
 
+  // Phones: Details, Text and Preview are tabs.
+  const sec = $('.editor');
   $$('.editor-tabs [data-tab]').forEach((b) => {
     b.onclick = () => {
       $$('.editor-tabs [data-tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
-      $('.editor-panes').dataset.tab = b.dataset.tab;
+      sec.dataset.tab = b.dataset.tab;
+      setIns(false);
       if (b.dataset.tab === 'preview') updatePreview();
     };
   });
+
+  // Phones: the toolbar is a menu behind the @# button. Tapping it or a
+  // choice keeps the focus (and the keyboard) in the recipe text.
+  const insBtn = $('#ins-btn');
+  function setIns(open) {
+    sec.classList.toggle('ins-open', open);
+    insBtn.setAttribute('aria-expanded', open);
+  }
+  insBtn.onclick = () => setIns(!sec.classList.contains('ins-open'));
+  $$('#ins-btn, #toolbar .tool-btn').forEach((b) => { b.onmousedown = (ev) => { if (document.activeElement === ta) ev.preventDefault(); }; });
+  sec.addEventListener('click', (ev) => { if (!ev.target.closest('#toolbar, #ins-btn')) setIns(false); });
+  sec.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && sec.classList.contains('ins-open')) { setIns(false); ta.focus(); } });
+
+  // While the keyboard is open the Save bar steps aside and only @# stays,
+  // just above the keyboard.
+  const vv = window.visualViewport;
+  if (vv) {
+    const onViewport = () => {
+      if (!sec.isConnected) { vv.removeEventListener('resize', onViewport); vv.removeEventListener('scroll', onViewport); return; }
+      const kb = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+      const typing = kb > 120 && /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || '');
+      sec.style.setProperty('--kb', `${typing ? kb : 0}px`);
+      sec.classList.toggle('kb-open', typing);
+    };
+    vv.addEventListener('resize', onViewport);
+    vv.addEventListener('scroll', onViewport);
+  }
 
   $('#folder').onchange = (ev) => { st.folder = ev.target.value; st.folderTouched = true; markDirty(); };
   $('#file').oninput = (ev) => {
@@ -2655,6 +2695,7 @@ async function showEditor(rawPath) {
   };
   // Empties the text for pasting; done as an edit so Ctrl+Z brings it back.
   $('#clear-src').onclick = () => {
+    setIns(false);
     ta.focus();
     ta.select();
     if (!document.execCommand('delete')) ta.value = '';
@@ -2662,6 +2703,7 @@ async function showEditor(rawPath) {
   };
   const pasteBtn = $('#paste-recipe');
   if (pasteBtn) pasteBtn.onclick = async () => {
+    setIns(false);
     let text;
     try { text = await navigator.clipboard.readText(); } catch {
       toast('This browser cannot read the clipboard here. Tap in the recipe text and paste it there instead.');

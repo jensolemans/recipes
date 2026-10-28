@@ -331,8 +331,12 @@ const newPage = async (opts = {}) => {
   ok(byName(crepesFolder, 'crepes.cook').content.toString().includes('Edited on phone'), 'cancel keeps the Drive version');
 
   // unsaved-changes guard
-  await page.click('a.link-btn:has-text("Cancel")');
+  await page.click('.editor-x');
   await page.waitForSelector('dialog[open]');
+  await page.click('dialog button:has-text("Keep editing")');
+  ok(await page.isVisible('#src'), 'Keep editing stays in the editor');
+  await page.click('.editor-x');
+  ok(await page.waitForSelector('dialog[open]', { timeout: 3000 }).then(() => true, () => false), 'and the close button asks again the next time');
   await page.click('dialog button:has-text("Discard changes")');
   await page.waitForSelector('.recipe');
   ok(true, 'leaving with unsaved changes asks first');
@@ -612,7 +616,7 @@ const newPage = async (opts = {}) => {
   await page.click('#tabbar .tab:has-text("New")');
   await page.waitForSelector('#src');
   ok(!(await page.isVisible('#tabbar')) && await page.isVisible('.btn-new'), 'the editor hides the tab bar');
-  await page.click('a.link-btn:has-text("Cancel")');
+  await page.click('.editor-x');
   await page.waitForSelector('#tabbar .tab');
 
   // a recipe in parts asks which parts to shop for
@@ -731,7 +735,7 @@ const newPage = async (opts = {}) => {
   await page.goto(`${BASE}/#/edit/01%20Breakfast/crepes`);
   await page.waitForSelector('#src');
   ok(await page.isVisible('#rail') && !(await page.isVisible('.side .shop-panel')), 'the editor keeps it as a rail');
-  await page.click('a.link-btn:has-text("Cancel")');
+  await page.click('.editor-x');
   await page.waitForSelector('.side .shop-panel');
   ok(true, 'and it comes back after the editor');
   await page.goto(`${BASE}/#/list`);
