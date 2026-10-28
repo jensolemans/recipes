@@ -69,6 +69,22 @@ the same name) and it cannot save photos.
   `connector/` changes on main (needs a Cloudflare API token as a secret).
   Only needed once the connector is changed from somewhere else than the
   laptop.
+- [ ] **Check Claude's Drive connector again.** Every few months, see if
+  Claude's built-in Google Drive connector can change a file's text in place
+  yet (in October 2026 it can create files and change their name, folder and
+  details, not their contents). If it can, most of the recipes connector may
+  no longer be needed: the skill writes the style, Drive saves the file. That
+  would make the setup much simpler, also for friends running their own copy.
+  Check what would be lost first: the version check, cooklint before saving,
+  and photos.
+
+Tested in October 2026, for letting friends run their own copy: per-file
+Drive access (the `drive.file` scope with Google's file picker) cannot be
+used instead of full Drive access. It would avoid Google's review and a
+Google Cloud project per person, but picking the recipe folder only gives
+access to the folder itself, not to the files in it (0 of 158 recipes
+visible). Files from the Cooklang phone app or Drive for desktop would never
+show up, so the site keeps the full `drive` scope.
 
 Covers what used to be planned here as import from a link, from social media
 and from a photo in the browser: Claude reads those itself.
