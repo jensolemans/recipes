@@ -155,7 +155,7 @@ const newPage = async (opts = {}) => {
   ok(await qty('whole milk') === '1 l', `crepes: 1 l milk at 8 servings (got ${await qty('whole milk')})`);
   ok(await qty('egg') === '6', 'crepes: 6 eggs at 8 servings');
   ok(page.url().includes('?s=8'), 'servings kept in the link');
-  const stepText = await page.$eval('.step', (li) => li.textContent);
+  const stepText = await page.$eval('.method', (el) => el.textContent);
   ok(stepText.includes('1 l'), 'method shows the scaled amount too');
   // fixed quantity
   await page.goto(`${BASE}/#/`);
@@ -226,6 +226,30 @@ const newPage = async (opts = {}) => {
   ok(Boolean(await page.$('#browse [data-open="05 Mains"]')), 'tapping All recipes in the path goes back up');
   await page.click('#browse [data-tab="filters"]');
   ok(Boolean(await page.$('#browse .opt')) && Boolean(await page.$('#b-show')), 'and the filters tab has the filters');
+  await page.close();
+}
+
+// 11b. ingredients by aisle, signed out, on the recipe page and in the mise en place
+{
+  const page = await newPage();
+  await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
+  await page.waitForSelector('.ing-sort');
+  const data = await page.evaluate(() => fetch('data/recipes.json').then((r) => r.json()));
+  const store = [...data.aisle.matchAll(/^\[(.+)\]\s*$/gm)].map((m) => m[1].trim().toLowerCase());
+  ok(store.length > 0, 'the build ships aisle.conf for friends');
+  ok(!(await page.$('.ingredients .ing-sec')), 'ingredients start as written');
+  await page.click('.ingredients .ing-row .tick');
+  const ticked = await page.textContent('.ingredients .ing-row.is-checked .ing-name');
+  await page.click('.ing-sort [data-sort="aisle"]');
+  const secs = (await page.$$eval('.ingredients .ing-sec', (els) => els.map((e) => e.textContent.trim().toLowerCase())));
+  const known = secs.filter((s) => s !== 'other' && s !== 'made at home');
+  ok(secs.length > 0 && known.every((s, i) => i === 0 || store.indexOf(known[i - 1]) < store.indexOf(s)), `By aisle groups them in store order (${secs.join(' | ')})`);
+  ok((await page.textContent('.ingredients .ing-row.is-checked .ing-name')) === ticked, 'the tick stays when you switch');
+  await page.click('#cook-btn');
+  await page.waitForSelector('.cook-mise');
+  ok((await page.$$('.cook-mise .ing-sec')).length === secs.length, 'the mise en place opens by aisle too');
+  await page.click('.cook-mise .ing-sort [data-sort="recipe"]');
+  ok(!(await page.$('.cook-mise .ing-sec')) && (await page.$$('.cook-mise .ing-lines .ing-row')).length > 0, 'As written puts the flat list back');
   await page.close();
 }
 

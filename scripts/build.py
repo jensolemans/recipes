@@ -122,7 +122,10 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
         "folderId": os.environ.get("GDRIVE_FOLDER_ID", ""),
         "publishUrl": f"https://github.com/{repo}/actions/workflows/publish.yml" if repo else "",
     }
-    payload = {"built": int(time.time()), "config": config, "folders": folders, "recipes": recipes}
+    # The store order, so friends can sort a recipe's ingredients by aisle too.
+    aisle_conf = recipes_dir / "config" / "aisle.conf"
+    aisle = aisle_conf.read_text(encoding="utf-8") if aisle_conf.exists() else ""
+    payload = {"built": int(time.time()), "config": config, "folders": folders, "recipes": recipes, "aisle": aisle}
     manifest_path = out_dir / "manifest.webmanifest"
     if manifest_path.exists():  # the home-screen app is named after the site
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

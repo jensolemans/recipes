@@ -123,6 +123,7 @@ async function boot() {
   }
   S.config = data.config || {};
   S.built = data.built || 0;
+  S.builtAisle = data.aisle || '';
   S.folders = (data.folders || []).filter((f) => !SKIP_TOP.test(f));
   for (const r of data.recipes || []) S.recipes.set(r.path, makeEntry(r));
 
@@ -833,29 +834,68 @@ function ingName(ing) {
   return ing.name;
 }
 
-/** Renders ingredients, cookware and method for a parsed recipe. */
-function recipeBody(parsed, { interactive = true, path = '' } = {}) {
+/** The ingredient lines of a parsed recipe, with the keys the ticks use. */
+function ingItems(parsed) {
   const { recipe, grouped } = parsed;
-  if (!recipe) return '<p class="muted">This recipe could not be read.</p>';
-  const checked = S.checked.get(path) || new Set();
-
-  const rows = [];
+  const out = [];
   const list = grouped.length ? grouped : recipe.ingredients.map((ing, index) => ({ index, quantity: null, single: ing.quantity }));
   for (const g of list) {
     const ing = recipe.ingredients[g.index];
     if (!ing || !shouldList(ing)) continue;
-    const qty = g.quantity ? fmtGrouped(g.quantity) : fmtQuantity(g.single);
-    const optional = /OPT/.test(ing.modifiers || '');
     const target = refPath(ing);
-    const exists = target && S.recipes.has(target);
-    const name = exists ? `<a href="#/r/${encPath(target)}">${esc(ingName(ing))}</a>` : esc(ingName(ing));
-    const key = String(g.index);
-    rows.push(`<li class="ing-row${checked.has(key) ? ' is-checked' : ''}" data-key="${key}">
-      ${interactive ? `<input type="checkbox" class="tick" aria-label="Got ${esc(ingName(ing))}" ${checked.has(key) ? 'checked' : ''}>` : ''}
-      <span class="ing-qty">${esc(qty)}</span>
-      <span class="ing-name">${name}${ing.note ? ` <span class="ing-note">${esc(ing.note)}</span>` : ''}${optional ? ' <span class="ing-note">optional</span>' : ''}</span>
-    </li>`);
+    out.push({
+      key: String(g.index), name: ingName(ing), ref: target, href: target && S.recipes.has(target) ? target : null,
+      note: ing.note || '', optional: /OPT/.test(ing.modifiers || ''),
+      qty: g.quantity ? fmtGrouped(g.quantity) : fmtQuantity(g.single),
+    });
   }
+  return out;
+}
+
+// Ingredients as written or by aisle, one pick per device for the recipe
+// page and the mise en place. Without an aisle.conf there is no choice.
+const hasAisles = () => shopCtx().aisle.sections.length > 0;
+const byAisle = () => hasAisles() && saved.get('ingSort', 'recipe') === 'aisle';
+
+function sortToggle() {
+  if (!hasAisles()) return '';
+  const v = byAisle() ? 'aisle' : 'recipe';
+  return `<div class="seg ing-sort" role="group" aria-label="Sort ingredients">
+    <button type="button" data-sort="recipe" aria-pressed="${v === 'recipe'}">As written</button>
+    <button type="button" data-sort="aisle" aria-pressed="${v === 'aisle'}">By aisle</button>
+  </div>`;
+}
+
+/** The ingredient list, flat or under aisle headings. `links` makes other recipes links. */
+function ingLines(items, checked, { interactive = true, links = true } = {}) {
+  const row = (x) => `<li class="ing-row${checked.has(x.key) ? ' is-checked' : ''}" data-key="${esc(x.key)}">
+      ${interactive ? `<input type="checkbox" class="tick" aria-label="Got ${esc(x.name)}" ${checked.has(x.key) ? 'checked' : ''}>` : ''}
+      <span class="ing-qty">${esc(x.qty)}</span>
+      <span class="ing-name">${links && x.href ? `<a href="#/r/${encPath(x.href)}">${esc(x.name)}</a>` : esc(x.name)}${x.note ? ` <span class="ing-note">${esc(x.note)}</span>` : ''}${x.optional ? ' <span class="ing-note">optional</span>' : ''}</span>
+    </li>`;
+  if (!interactive || !byAisle()) return `<ul class="ing-list">${items.map(row).join('')}</ul>`;
+  return shop.aisleGroups(items, shopCtx().aisle).map((g) => `
+    <h3 class="ing-sec">${esc(cap(g.name))}</h3>
+    <ul class="ing-list">${g.items.map(row).join('')}</ul>`).join('');
+}
+
+/** Wires the sort toggle in `root`; `redraw` puts the list in again. */
+function wireSort(root, redraw) {
+  $$('.ing-sort button', root).forEach((b) => {
+    b.onclick = () => {
+      saved.set('ingSort', b.dataset.sort);
+      $$('.ing-sort button', root).forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      redraw();
+    };
+  });
+}
+
+/** Renders ingredients, cookware and method for a parsed recipe. */
+function recipeBody(parsed, { interactive = true, path = '' } = {}) {
+  const { recipe } = parsed;
+  if (!recipe) return '<p class="muted">This recipe could not be read.</p>';
+  const checked = S.checked.get(path) || new Set();
+  const items = ingItems(parsed);
 
   const seenTools = new Set();
   const tools = [];
@@ -887,8 +927,8 @@ function recipeBody(parsed, { interactive = true, path = '' } = {}) {
 
   return `
     <aside class="ingredients">
-      <h2>Ingredients</h2>
-      ${rows.length ? `<ul class="ing-list">${rows.join('')}</ul>` : '<p class="muted">No ingredients listed.</p>'}
+      <div class="ing-head"><h2>Ingredients</h2>${interactive && items.length ? sortToggle() : ''}</div>
+      ${items.length ? `<div class="ing-lines">${ingLines(items, checked, { interactive })}</div>` : '<p class="muted">No ingredients listed.</p>'}
       ${tools.length ? `<h2 class="tools-h">Equipment</h2><ul class="tool-list">${tools.join('')}</ul>` : ''}
     </aside>
     <section class="method">
@@ -1073,7 +1113,7 @@ async function showRecipe(rawPath, params) {
   const wireBody = () => {
     const set = S.checked.get(path) || new Set();
     S.checked.set(path, set);
-    $$('#body .ing-row').forEach((row) => {
+    const wireTicks = () => $$('#body .ing-row').forEach((row) => {
       const box = row.querySelector('.tick');
       if (!box) return;
       box.onchange = () => {
@@ -1081,6 +1121,8 @@ async function showRecipe(rawPath, params) {
         row.classList.toggle('is-checked', box.checked);
       };
     });
+    wireTicks();
+    wireSort($('#body'), () => { $('#body .ing-lines').innerHTML = ingLines(ingItems(parsed), set); wireTicks(); });
     $$('#body .step').forEach((li) => {
       li.addEventListener('click', (ev) => {
         if (ev.target.closest('a,button')) return;
@@ -1304,22 +1346,11 @@ function cookSteps(recipe) {
 
 /** Everything to get out, with the same keys as the ticks on the recipe page. */
 function cookList(parsed, steps) {
-  const { recipe, grouped } = parsed;
+  const { recipe } = parsed;
   const toolName = (c) => (c.alias || c.name).toLowerCase();
   // Which steps use each thing, matched by name, for the desktop list.
   const usedIn = (test) => steps.map((s, i) => (test(s) ? i + 1 : 0)).filter(Boolean);
-  const ings = [];
-  const list = grouped.length ? grouped : recipe.ingredients.map((ing, index) => ({ index, quantity: null, single: ing.quantity }));
-  for (const g of list) {
-    const ing = recipe.ingredients[g.index];
-    if (!ing || !shouldList(ing)) continue;
-    const name = ingName(ing);
-    ings.push({
-      key: String(g.index), name, note: ing.note || '', optional: /OPT/.test(ing.modifiers || ''),
-      qty: g.quantity ? fmtGrouped(g.quantity) : fmtQuantity(g.single),
-      steps: usedIn((s) => s.ings.some((x) => lc(ingName(x)) === lc(name))),
-    });
-  }
+  const ings = ingItems(parsed).map((x) => ({ ...x, steps: usedIn((s) => s.ings.some((i) => lc(ingName(i)) === lc(x.name))) }));
   const tools = [];
   const seen = new Set();
   for (const c of recipe.cookware || []) {
@@ -1433,7 +1464,7 @@ async function showCook(rawPath, params) {
     <div class="cook-mise">
       <h1>Mise en place</h1>
       <div class="mise-meta"><div class="scaler" id="cook-scaler"></div><span id="mise-count">${readyText()}</span></div>
-      ${list.ings.length ? `<h2>Ingredients</h2><ul class="ing-list">${list.ings.map((x) => tickRow(x, false)).join('')}</ul>` : ''}
+      ${list.ings.length ? `<div class="ing-head"><h2>Ingredients</h2>${sortToggle()}</div><div class="ing-lines">${ingLines(list.ings, checked, { links: false })}</div>` : ''}
       ${list.tools.length ? `<h2>Tools</h2><ul class="ing-list tool-list">${list.tools.map((x) => tickRow(x, true)).join('')}</ul>` : ''}
     </div>`;
 
@@ -1593,18 +1624,21 @@ async function showCook(rawPath, params) {
     if (next) next.onclick = () => go2(at + 1, 1);
   };
 
+  const wireTicks = () => $$('.ing-row', stage).forEach((row) => {
+    const box = row.querySelector('.tick');
+    const set = () => {
+      box.checked ? checked.add(row.dataset.key) : checked.delete(row.dataset.key);
+      row.classList.toggle('is-checked', box.checked);
+      const c = $('#mise-count');
+      if (c) c.textContent = readyText();
+    };
+    box.onchange = set;
+    row.onclick = (ev) => { if (ev.target === box) return; box.checked = !box.checked; set(); };
+  });
+
   const wire = () => {
-    $$('.ing-row', stage).forEach((row) => {
-      const box = row.querySelector('.tick');
-      const set = () => {
-        box.checked ? checked.add(row.dataset.key) : checked.delete(row.dataset.key);
-        row.classList.toggle('is-checked', box.checked);
-        const c = $('#mise-count');
-        if (c) c.textContent = readyText();
-      };
-      box.onchange = set;
-      row.onclick = (ev) => { if (ev.target === box) return; box.checked = !box.checked; set(); };
-    });
+    wireTicks();
+    wireSort(stage, () => { $('.ing-lines', stage).innerHTML = ingLines(list.ings, checked, { links: false }); wireTicks(); });
     if (mode === 'steps') wireTimerChips(stage, e.path, `${e.title}, step ${at}`);
     else $$('.cf-step', stage).forEach((li) => wireTimerChips(li, e.path, `${e.title}, step ${li.dataset.at}`));
     wireFoot();
@@ -1690,7 +1724,8 @@ const ingMemo = new Map();
 
 /** What the shopping list needs to know about recipes, aisles and the pantry. */
 function shopCtx() {
-  const a = S.conf.aisle?.text || '';
+  // Signed out, the copy from the last build.
+  const a = (S.conf.aisle ? S.conf.aisle.text : S.builtAisle) || '';
   if (aisleCache.text !== a) aisleCache = { text: a, parsed: shop.parseAisle(a) };
   const p = S.conf.pantry?.text || '';
   if (pantryCache.text !== p) pantryCache = { text: p, parsed: shop.parsePantry(p) };

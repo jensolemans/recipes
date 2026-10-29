@@ -68,7 +68,8 @@ folders use the same files.
     (method text, descriptions).
 - `scripts/build.py RECIPES APP OUT`: copies `app/` to OUT and writes
   `data/recipes.json` (path, source, md5, mtime, photo id per recipe, plus the
-  site config) and resized photos in `img/` and `thumb/`. The md5 equals
+  site config and `config/aisle.conf`, so friends can sort a recipe's
+  ingredients "By aisle" on the recipe page and in the mise en place too) and resized photos in `img/` and `thumb/`. The md5 equals
   Drive's md5Checksum, so the signed-in app only downloads files that changed
   since the last build.
 - `scripts/dev.py`: local preview at http://localhost:8000. Serves `app/` live

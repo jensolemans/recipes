@@ -402,6 +402,13 @@ body:has(.sheet[open]) { overflow: hidden; }
 .ing-note { color: var(--muted); font-size: 14px; }
 .ing-row.is-checked .ing-qty, .ing-row.is-checked .ing-name { opacity: .4; text-decoration: line-through; }
 .tools-h { margin-top: 30px !important; }
+/* As written / By aisle beside the Ingredients heading */
+.ing-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.ing-head h2 { margin: 0 !important; }
+.ing-sort { margin: 0; }
+.ing-sort button { padding: 5px 12px; font-size: 13px; }
+.ing-sec { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 0 0; }
+.ing-sec:first-child { margin-top: 4px; }
 .tool-list .tool-row { grid-template-columns: auto minmax(0, 1fr); }
 .tool-list .tool-row:not(:has(.tick)) { display: block; }
 
@@ -778,6 +785,7 @@ body[data-view="cook"] .timers { bottom: calc(var(--cook-foot, 120px) + 8px); }
 
 .cook-mise h1 { font-size: 30px; letter-spacing: -.02em; margin: 0 0 12px; }
 .cook-mise h2 { font-size: 15px; color: var(--muted); margin: 22px 0 2px; }
+.cook-mise .ing-head { margin: 22px 0 2px; }
 .mise-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 14px; }
 .cook-mise .ing-row { cursor: pointer; }
 

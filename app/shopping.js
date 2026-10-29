@@ -134,6 +134,23 @@ export function lookup(aisle, name) {
   return { key: n, name: String(name).trim(), sec: -1, pos: Infinity };
 }
 
+/**
+ * Groups a recipe's ingredient lines by aisle, for reading the recipe:
+ * aisles in store order, lines in recipe order within one, then what
+ * aisle.conf does not know ("other") and other recipes ("made at home").
+ * `items`: [{ name, ref }]. Returns [{ name, items }].
+ */
+export function aisleGroups(items, aisle) {
+  const secs = aisle.sections.map((name) => ({ name, items: [] }));
+  const other = { name: 'other', items: [] };
+  const home = aisle.madeAtHome >= 0 ? secs[aisle.madeAtHome] : { name: MADE_AT_HOME, items: [] };
+  for (const it of items) {
+    const sec = it.ref ? aisle.madeAtHome : lookup(aisle, it.name).sec;
+    (it.ref ? home : sec >= 0 ? secs[sec] : other).items.push(it);
+  }
+  return [...secs.filter((s) => s !== home), other, home].filter((s) => s.items.length);
+}
+
 // Metric amounts add up across units; anything else only with the same unit.
 const BASE = { g: ['g', 1], kg: ['g', 1000], mg: ['g', 0.001], ml: ['ml', 1], l: ['ml', 1000], cl: ['ml', 10], dl: ['ml', 100] };
 
