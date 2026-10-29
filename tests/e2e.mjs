@@ -181,7 +181,8 @@ const newPage = async (opts = {}) => {
   await page.waitForTimeout(300);
   await page.click('#place');
   await page.click('#browse [data-pick="01 Breakfast"]');
-  ok((await page.$$('.card')).length === 5, 'Breakfast folder shows 5');
+  const breakfast = await page.evaluate(() => fetch('data/recipes.json').then((r) => r.json()).then((d) => d.recipes.filter((r) => r.path.startsWith('01 Breakfast/')).length));
+  ok((await page.$$('.card')).length === breakfast, `Breakfast folder shows all ${breakfast}`);
   ok(!(await page.$eval('#browse', (d) => d.open)), 'picking a folder closes the panel');
   ok((await page.textContent('#place')).includes('Breakfast'), 'the folder button says where you are');
   await page.click('#place');
@@ -272,8 +273,29 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('.cook-text');
   await page.click('#cook-mode');
   await page.waitForSelector('.cook-flow');
-  ok((await page.$$('.cf-done')).length === 2, 'scroll mode folds the mise en place and step 1');
-  ok(Boolean(await page.$('.cf-now .cook-text')), 'and shows the current step in full');
+  const nowStep = () => page.$eval('.cf-step.is-now', (el) => el.dataset.at);
+  ok((await nowStep()) === '2' && (await page.$$('.cf-step.is-done')).length === 2, 'scroll mode opens on the current step, the ones before are done');
+  const centred = () => page.$eval('.cf-step.is-now', (el) => {
+    const top = document.querySelector('.cook-top').offsetHeight, foot = document.querySelector('#cook-foot').offsetHeight;
+    const r = el.getBoundingClientRect();
+    return Math.abs((r.top + r.bottom) / 2 - (top + (innerHeight - top - foot) / 2));
+  });
+  ok((await centred()) < 4, `the current step sits in the middle (${Math.round(await centred())}px off)`);
+  await page.mouse.wheel(0, 300);
+  await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '3', null, { timeout: 3000 }).catch(() => {});
+  await page.waitForTimeout(800); // let the snap settle
+  ok((await nowStep()) === '3' && page.url().includes('step=3'), 'scrolling down makes the next step the current one');
+  ok((await centred()) < 4, `and it snaps to the middle (${Math.round(await centred())}px off)`);
+  await page.click('.cf-step[data-at="1"] .cook-text');
+  await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '1', null, { timeout: 3000 }).catch(() => {});
+  ok((await nowStep()) === '1', 'tapping a faded step brings it to the middle');
+  await page.click('#cook-next');
+  await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '2', null, { timeout: 3000 }).catch(() => {});
+  ok((await nowStep()) === '2' && (await page.textContent('.cook-where')).startsWith('2 of '), 'Next scrolls to the next step');
+  const last = await page.$$eval('.cf-step', (els) => els.length - 1);
+  await page.click(`.cb-pill[data-at="${last}"]`);
+  await page.waitForFunction((n) => document.querySelector('.cf-step.is-now')?.dataset.at === String(n), last, { timeout: 3000 }).catch(() => {});
+  ok((await page.textContent('#cook-next')).includes('Finish'), 'on the last step Next becomes Finish');
   await page.click('#cook-mode'); // leave it in steps mode for the next test
   await page.close();
 

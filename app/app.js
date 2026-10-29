@@ -1274,18 +1274,6 @@ const RIGHT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h1
 const PRINT_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V4.5h10V9"/><path d="M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17"/><rect x="7" y="14" width="10" height="5.5" rx="1"/></svg>';
 const CHECK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
-// A step as plain text, for the one-line previews in the scroll view.
-function plainStep(items, recipe) {
-  return items.map((it) => {
-    if (it.type === 'text') return it.value;
-    if (it.type === 'ingredient') { const ing = recipe.ingredients[it.index]; return ing ? ingName(ing) : ''; }
-    if (it.type === 'cookware') { const c = recipe.cookware[it.index]; return c ? (c.alias || c.name) : ''; }
-    if (it.type === 'timer') { const t = recipe.timers[it.index]; return t ? (fmtQuantity(t.quantity) || t.name || '') : ''; }
-    if (it.type === 'inlineQuantity') { const q = recipe.inline_quantities?.[it.index]; return q ? fmtQuantity(q) : ''; }
-    return '';
-  }).join('').replace(/\s+/g, ' ').trim();
-}
-
 /** The method as a flat list of steps, each with its chapter, notes and what it uses. */
 function cookSteps(recipe) {
   const steps = [];
@@ -1302,7 +1290,6 @@ function cookSteps(recipe) {
       steps.push({
         chapter: sec.name || '', notes, after: [],
         html: items.map((it) => stepItem(it, recipe, true)).join(''),
-        plain: plainStep(items, recipe),
         ings: ings.map((i) => recipe.ingredients[i]).filter((ing) => ing && shouldList(ing)),
         tools: tools.map((i) => recipe.cookware[i]).filter((c) => c && !(c.relation && c.relation.type === 'reference')),
       });
@@ -1360,6 +1347,7 @@ async function keepAwake(on) {
 }
 
 let cookKeys = null;
+let cookScroll = null;
 
 async function showCook(rawPath, params) {
   const path = rawPath;
@@ -1447,20 +1435,16 @@ async function showCook(rawPath, params) {
       ${list.tools.length ? `<h2>Tools</h2><ul class="ing-list tool-list">${list.tools.map((x) => tickRow(x, true)).join('')}</ul>` : ''}
     </div>`;
 
-  // Done steps fold to one line of their own text, coming steps show two.
+  // Every step in full, like the wheel of an alarm clock: the one in the
+  // middle of the screen is the current one and the page snaps to it.
   const flowHTML = () => {
-    const out = [];
-    out.push(at === 0
-      ? `<li class="cf-now" data-at="0">${miseHTML()}</li>`
-      : `<li class="cf-done" data-at="0"><span class="cf-check">${CHECK_ICON}</span><span class="cf-line">Mise en place</span></li>`);
+    const out = [`<li class="cf-step cf-mise" data-at="0">${miseHTML()}</li>`];
     let chapter = '';
     steps.forEach((s, i) => {
       const n = i + 1;
       if (s.chapter && s.chapter !== chapter) out.push(`<li class="cf-chapter">${esc(s.chapter)}</li>`);
       chapter = s.chapter;
-      if (n < at) out.push(`<li class="cf-done" data-at="${n}"><span class="cf-check">${CHECK_ICON}</span><span class="cf-line">${esc(s.plain)}</span></li>`);
-      else if (n === at) out.push(`<li class="cf-now" data-at="${n}"><p class="cook-count">Step ${n} of ${steps.length}</p>${stepHTML({ ...s, chapter: '' })}</li>`);
-      else out.push(`<li class="cf-next" data-at="${n}"><span class="cf-n">${n}</span><span class="cf-clamp">${esc(s.plain)}</span></li>`);
+      out.push(`<li class="cf-step" data-at="${n}"><p class="cook-count">Step ${n} of ${steps.length}</p>${stepHTML({ ...s, chapter: '' })}</li>`);
     });
     return `<ol class="cook-flow">${out.join('')}</ol>`;
   };
@@ -1487,9 +1471,6 @@ async function showCook(rawPath, params) {
 
   const footHTML = () => {
     const last = at >= steps.length;
-    if (mode === 'scroll') {
-      return `<button class="btn btn-primary cook-next-wide" id="cook-next">${at === 0 ? `Start cooking ${RIGHT_ICON}` : last ? `${CHECK_ICON} Finish` : `${CHECK_ICON} Done, next step`}</button>`;
-    }
     return `${barHTML()}
       <div class="cook-nav">
         <button class="cook-arrow${at === 0 ? ' is-hidden' : ''}" id="cook-prev" aria-label="Previous step" ${at === 0 ? 'tabindex="-1"' : ''}>${LEFT_ICON}<span>Back</span></button>
@@ -1524,8 +1505,52 @@ async function showCook(rawPath, params) {
     }
   };
 
+  const syncHash = () => {
+    const h = `#/cook/${encPath(path)}${query(true)}`;
+    if (location.hash !== h) { history.replaceState(null, '', h); S.currentHash = h; }
+    $('#cook-close').href = backHash();
+  };
+
+  // Scroll mode: put a step in the middle (a tall one with its top in view);
+  // the scroll itself makes it the current step.
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const scrollToStep = (n, smooth = true) => {
+    const li = $(`.cf-step[data-at="${n}"]`, stage);
+    if (!li) return;
+    const room = innerHeight - $('.cook-top', root).offsetHeight - foot.offsetHeight;
+    li.scrollIntoView({ block: li.offsetHeight > room ? 'start' : 'center', behavior: smooth && !calm() ? 'smooth' : 'auto' });
+  };
+
+  // The step under the middle of the space between the top bar and the foot,
+  // or the nearest one when the middle falls between two.
+  const centreStep = () => {
+    const top = $('.cook-top', root).offsetHeight;
+    const mid = top + (innerHeight - top - foot.offsetHeight) / 2;
+    let best = at, dist = Infinity;
+    for (const li of $$('.cf-step', stage)) {
+      const r = li.getBoundingClientRect();
+      const d = r.top <= mid && r.bottom >= mid ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
+      if (d < dist) { dist = d; best = Number(li.dataset.at); }
+    }
+    return best;
+  };
+
+  // Scroll mode: show the new current step without redrawing the steps.
+  const mark = () => {
+    $$('.cf-step', stage).forEach((li) => {
+      const n = Number(li.dataset.at);
+      li.classList.toggle('is-now', n === at);
+      li.classList.toggle('is-done', n < at);
+    });
+    side.innerHTML = sideHTML();
+    foot.innerHTML = footHTML();
+    wireFoot();
+    syncHash();
+  };
+
   const go2 = (n, dir = 0) => {
     if (n > steps.length) { go(backHash()); return; }
+    if (mode === 'scroll') { scrollToStep(Math.max(0, n)); return; }
     at = Math.max(0, n);
     render(dir, true);
   };
@@ -1549,17 +1574,21 @@ async function showCook(rawPath, params) {
       stage.innerHTML = `<div class="cook-card${dir > 0 ? ' from-right' : dir < 0 ? ' from-left' : ''}">${at ? stepHTML(steps[at - 1]) : miseHTML()}</div>`;
     } else stage.innerHTML = flowHTML();
     foot.innerHTML = footHTML();
-    document.body.style.setProperty('--cook-foot', `${foot.offsetHeight}px`);
+    const html = document.documentElement.style;
+    html.setProperty('--cook-top', `${$('.cook-top', root).offsetHeight}px`);
+    html.setProperty('--cook-foot', `${foot.offsetHeight}px`);
     drawScaler();
     wire();
+    syncHash();
+    if (mode === 'scroll') { mark(); scrollToStep(at, false); } else if (moved) window.scrollTo({ top: 0 });
+  };
 
-    const h = `#/cook/${encPath(path)}${query(true)}`;
-    if (location.hash !== h) { history.replaceState(null, '', h); S.currentHash = h; }
-    $('#cook-close').href = backHash();
-    if (mode === 'scroll' && at > 0) {
-      const now = $('.cf-now', stage);
-      if (now) now.scrollIntoView({ block: 'center', behavior: moved ? 'smooth' : 'auto' });
-    } else if (moved) window.scrollTo({ top: 0 });
+  const wireFoot = () => {
+    $$('.cb-pill', foot).forEach((b) => { b.onclick = () => { const n = Number(b.dataset.at); go2(n, Math.sign(n - at)); }; });
+    const prev = $('#cook-prev');
+    if (prev) prev.onclick = () => go2(at - 1, -1);
+    const next = $('#cook-next');
+    if (next) next.onclick = () => go2(at + 1, 1);
   };
 
   const wire = () => {
@@ -1574,13 +1603,34 @@ async function showCook(rawPath, params) {
       box.onchange = set;
       row.onclick = (ev) => { if (ev.target === box) return; box.checked = !box.checked; set(); };
     });
-    wireTimerChips(stage, e.path, `${e.title}, step ${at}`);
-    $$('.cf-done, .cf-next', stage).forEach((li) => { li.onclick = () => go2(Number(li.dataset.at)); });
-    $$('.cb-pill', foot).forEach((b) => { b.onclick = () => { const n = Number(b.dataset.at); go2(n, Math.sign(n - at)); }; });
-    const prev = $('#cook-prev');
-    if (prev) prev.onclick = () => go2(at - 1, -1);
-    $('#cook-next').onclick = () => go2(at + 1, 1);
+    if (mode === 'steps') wireTimerChips(stage, e.path, `${e.title}, step ${at}`);
+    else $$('.cf-step', stage).forEach((li) => wireTimerChips(li, e.path, `${e.title}, step ${li.dataset.at}`));
+    wireFoot();
   };
+
+  // Scroll mode: a tap on a faded step brings it to the middle instead of
+  // ticking or starting what is in it.
+  stage.addEventListener('click', (ev) => {
+    const li = mode === 'scroll' && ev.target.closest('.cf-step');
+    if (!li || li.classList.contains('is-now')) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    scrollToStep(Number(li.dataset.at));
+  }, true);
+
+  // Scroll mode: whichever step passes the middle becomes the current one.
+  if (cookScroll) removeEventListener('scroll', cookScroll);
+  let frame = 0;
+  cookScroll = () => {
+    if (!root.isConnected) { removeEventListener('scroll', cookScroll); cookScroll = null; return; }
+    if (mode !== 'scroll' || frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const n = centreStep();
+      if (n !== at) { at = n; mark(); }
+    });
+  };
+  addEventListener('scroll', cookScroll, { passive: true });
 
   const awakeBtn = $('#cook-awake');
   if (awakeBtn) awakeBtn.onclick = () => { awake = !awake; saved.set('cookAwake', awake); keepAwake(awake); render(); };
@@ -1608,7 +1658,7 @@ async function showCook(rawPath, params) {
     else if (k === 'ArrowLeft' || k === 'PageUp') { ev.preventDefault(); if (at > 0) go2(at - 1, -1); }
     else if (k === 'Escape') go(backHash());
     else if (k.toLowerCase() === 't') {
-      const chip = $(mode === 'steps' ? '.timer-chip[data-secs]' : '.cf-now .timer-chip[data-secs]', stage);
+      const chip = $(mode === 'steps' ? '.timer-chip[data-secs]' : '.cf-step.is-now .timer-chip[data-secs]', stage);
       if (chip) { ev.preventDefault(); chip.click(); }
     }
   };
