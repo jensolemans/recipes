@@ -939,6 +939,19 @@ html:has(.cook[data-mode="scroll"]) {
 .pane-preview .step p { font-size: 17px; }
 
 /* ---------- responsive ---------- */
+/* Wide desktops: the page grows with the screen up to 1480 px. */
+@media (min-width: 1400px) {
+  main, .topbar { max-width: clamp(1180px, calc((100vw - var(--side-w, 0px)) * .88), 1480px); padding-left: 32px; padding-right: 32px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .recipe-body { grid-template-columns: minmax(280px, 400px) minmax(0, 1fr); gap: 64px; }
+  .method { max-width: 48em; }
+  /* Centre on the whole window: the scrollbar gets a matching gap on the left,
+     and the closed shopping list rail sits in the margin instead of pushing the page. */
+  html { scrollbar-gutter: stable both-edges; }
+  body.has-side:not(.side-open) { padding-right: 0; }
+  body.has-side:not(.side-open)[data-view="home"] .topbar { right: 0; }
+  body.has-side:not(.side-open) .toast, body.has-side:not(.side-open) .timers { left: 50%; }
+}
 @media (max-width: 900px) {
   .recipe-top.has-img { grid-template-columns: 1fr; }
   .hero { margin: 0 -16px; border-radius: 0; aspect-ratio: 3 / 2; }
