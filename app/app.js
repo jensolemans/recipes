@@ -1063,6 +1063,14 @@ async function showRecipe(rawPath, params) {
       <p class="print-only print-foot" id="print-foot"></p>
     </article>`;
   $('#print-btn').onclick = () => { closeMenus(); window.print(); };
+  // A photo that cannot load (offline and not kept yet) falls back to the
+  // card photo, else it goes, rather than showing a broken image.
+  const hero = $('.hero img');
+  if (hero) hero.onerror = () => {
+    if (e.thumbUrl && hero.getAttribute('src') !== e.thumbUrl) { hero.src = e.thumbUrl; return; }
+    hero.closest('.recipe-top').classList.remove('has-img');
+    hero.parentElement.remove();
+  };
   const photoBtn = $('#photo-btn');
   if (photoBtn) photoBtn.onclick = () => { closeMenus(); changePhoto(e); };
   // When the row wraps, ⋯ can end up on the left: open the menu rightwards then.

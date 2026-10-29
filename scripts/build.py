@@ -9,6 +9,9 @@ manifest.webmanifest after the site title) and writes:
   img/<id>.jpg       full-size photo (max 1600 px)
   thumb/<id>.jpg     card thumbnail (max 640 px)
 
+The photo id changes with the photo, so a replaced photo gets a new address
+and no cached copy of the old one can stand in for it.
+
 The md5 matches Google Drive's md5Checksum, so the signed-in editor can tell
 which files changed in Drive after this build.
 """
@@ -27,13 +30,13 @@ FULL_MAX = 1600
 THUMB_MAX = 640
 
 
-def image_id(rel_path: str) -> str:
-    return hashlib.sha1(rel_path.encode("utf-8")).hexdigest()[:16]
+def image_id(rel_path: str, md5: str) -> str:
+    return hashlib.sha1(f"{rel_path}:{md5}".encode("utf-8")).hexdigest()[:16]
 
 
 def save_resized(src: Path, dest: Path, max_side: int, quality: int) -> None:
-    if dest.exists() and dest.stat().st_mtime >= src.stat().st_mtime:
-        return  # already up to date (local preview keeps its photos between runs)
+    if dest.exists():
+        return  # the name follows the photo's md5 (local preview keeps its photos between runs)
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)
         im.thumbnail((max_side, max_side), Image.LANCZOS)
@@ -93,13 +96,14 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
         }
         img = find_image(cook)
         if img is not None:
-            iid = image_id(rel)
+            img_md5 = hashlib.md5(img.read_bytes()).hexdigest()
+            iid = image_id(rel, img_md5)
             try:
                 save_resized(img, out_dir / "img" / f"{iid}.jpg", FULL_MAX, 82)
                 save_resized(img, out_dir / "thumb" / f"{iid}.jpg", THUMB_MAX, 74)
                 entry["image"] = iid
                 entry["imageName"] = img.name
-                entry["imageMd5"] = hashlib.md5(img.read_bytes()).hexdigest()
+                entry["imageMd5"] = img_md5
             except Exception as exc:  # a broken photo should not break the site
                 print(f"warning: skipped image {img}: {exc}", file=sys.stderr)
         recipes.append(entry)

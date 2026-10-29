@@ -4,7 +4,7 @@
 // The site itself (HTML, CSS, JS, fonts, parser) is served from the copy and
 // refreshed in the background. The
 // recipe index tries the network first for 3 seconds. Photos are kept once
-// seen and refreshed like the site (a replaced photo keeps its file name).
+// seen (a replaced photo gets a new file name, so a kept one is never stale).
 // On localhost everything tries the network first, so edits show at once.
 //
 // build.py replaces the version below with a fingerprint of the site files,
