@@ -1005,6 +1005,7 @@ async function showRecipe(rawPath, params) {
             ${owner
               ? `<a class="btn btn-quiet icon-btn" id="edit-btn" ${claudeLink(path)} title="Edit" aria-label="Edit">${PEN_ICON}</a>`
               : `<button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>`}
+            ${owner || canEdit ? `
             <details class="menu recipe-more">
               <summary class="btn btn-quiet icon-btn" title="More" aria-label="More">${MORE_ICON}</summary>
               <div class="menu-pop">
@@ -1013,7 +1014,8 @@ async function showRecipe(rawPath, params) {
                 ${canEdit ? '<button class="menu-item" id="photo-btn" aria-haspopup="dialog">Change photo</button>' : ''}
                 ${owner ? `<a class="menu-item" href="#/edit/${encPath(path)}">Edit file</a>` : ''}
               </div>
-            </details>
+            </details>`
+              : `<button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>`}
           </div>
         </div>
       </div>
@@ -1025,7 +1027,7 @@ async function showRecipe(rawPath, params) {
   if (photoBtn) photoBtn.onclick = () => { closeMenus(); changePhoto(e); };
   // When the row wraps, ⋯ can end up on the left: open the menu rightwards then.
   const more = $('.recipe-more');
-  more.ontoggle = () => { if (more.open) $('.menu-pop', more).classList.toggle('at-left', more.getBoundingClientRect().right < 220); };
+  if (more) more.ontoggle = () => { if (more.open) $('.menu-pop', more).classList.toggle('at-left', more.getBoundingClientRect().right < 220); };
 
   $$('.crumbs a[data-ch]').forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); S.filters.chapter = a.dataset.ch; S.filters.sub = a.dataset.sub; go('#/'); };
