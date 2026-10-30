@@ -13,7 +13,7 @@ const API = 'https://www.googleapis.com/drive/v3';
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const SCOPE = 'https://www.googleapis.com/auth/drive';
 const FOLDER = 'application/vnd.google-apps.folder';
-const FILE_FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,parents,trashed';
+const FILE_FIELDS = 'id,name,mimeType,md5Checksum,modifiedTime,parents,trashed,thumbnailLink';
 const STORE_KEY = 'recipes.session';
 
 const PASS_KEY = 'recipes.pass';
@@ -246,39 +246,81 @@ export async function checkFolder(folderId) {
   return { name: f.name, canEdit: Boolean(f.capabilities?.canEdit) };
 }
 
-async function listChildren(folderId) {
-  const out = [];
-  let pageToken = '';
-  do {
-    const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-    const url = `${API}/files?q=${q}&fields=nextPageToken,files(${FILE_FIELDS})&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`;
-    const r = await authed(url);
-    out.push(...(r.files || []));
-    pageToken = r.nextPageToken || '';
-  } while (pageToken);
-  return out;
+/** Everything directly inside any of these folders, in as few requests as Drive allows. */
+async function listIn(folderIds) {
+  const batches = [];
+  for (let i = 0; i < folderIds.length; i += 40) batches.push(folderIds.slice(i, i + 40));
+  const lists = await Promise.all(batches.map(async (ids) => {
+    const out = [];
+    let pageToken = '';
+    do {
+      const q = encodeURIComponent(`(${ids.map((id) => `'${id}' in parents`).join(' or ')}) and trashed = false`);
+      const url = `${API}/files?q=${q}&fields=nextPageToken,files(${FILE_FIELDS})&pageSize=1000${pageToken ? `&pageToken=${pageToken}` : ''}`;
+      const r = await authed(url);
+      out.push(...(r.files || []));
+      pageToken = r.nextPageToken || '';
+    } while (pageToken);
+    return out;
+  }));
+  return lists.flat();
 }
+
+// The folder IDs found last time, so the next walk asks for all of them at
+// once instead of one level of folders after the other.
+const knownFolders = {
+  key: (rootId) => `recipes.folders.${rootId}`,
+  get(rootId) { try { return JSON.parse(localStorage.getItem(this.key(rootId)) || '[]'); } catch { return []; } },
+  set(rootId, ids) { try { localStorage.setItem(this.key(rootId), JSON.stringify(ids)); } catch { /* private mode */ } },
+};
 
 /**
  * Walks the whole recipe folder.
  * Returns { folders: Map(path -> id), files: Map(path -> file) } where path is
  * relative to the root ("" is the root folder itself).
+ *
+ * Asks for the contents of every folder seen last time in one go, then only
+ * for folders that are new since. Folders that were moved out or deleted
+ * are not reachable from the root any more, so they drop out.
  */
 export async function walk(rootId) {
-  const folders = new Map([['', rootId]]);
-  const files = new Map();
-  let level = [['', rootId]];
-  while (level.length) {
-    const results = await Promise.all(level.map(([p, id]) => listChildren(id).then(c => [p, c])));
-    level = [];
-    for (const [parentPath, children] of results) {
-      for (const f of children) {
-        const path = parentPath ? `${parentPath}/${f.name}` : f.name;
-        if (f.mimeType === FOLDER) { folders.set(path, f.id); level.push([path, f.id]); }
-        else files.set(path, f);
+  const kids = new Map(); // folder ID -> what is directly inside it
+  const asked = new Set();
+  let ask = [...new Set([rootId, ...knownFolders.get(rootId)])];
+  while (ask.length) {
+    ask.forEach((id) => { asked.add(id); kids.set(id, []); });
+    let found;
+    try { found = await listIn(ask); } catch (e) {
+      // A remembered folder Drive no longer knows: start over from the root.
+      if (asked.size === 1 || e.code === 401) throw e;
+      knownFolders.set(rootId, []);
+      return walk(rootId);
+    }
+    for (const f of found) {
+      for (const p of f.parents || []) kids.get(p)?.push(f);
+    }
+    ask = [];
+    const stack = [rootId];
+    while (stack.length) {
+      for (const f of kids.get(stack.pop()) || []) {
+        if (f.mimeType !== FOLDER) continue;
+        if (asked.has(f.id)) stack.push(f.id);
+        else ask.push(f.id);
       }
     }
   }
+
+  const folders = new Map([['', rootId]]);
+  const files = new Map();
+  const stack = [['', rootId]];
+  while (stack.length) {
+    const [parentPath, id] = stack.pop();
+    for (const f of kids.get(id) || []) {
+      const path = parentPath ? `${parentPath}/${f.name}` : f.name;
+      if (f.mimeType === FOLDER) { folders.set(path, f.id); stack.push([path, f.id]); }
+      else files.set(path, f);
+    }
+  }
+  knownFolders.set(rootId, [...folders.values()].filter((id) => id !== rootId));
   return { folders, files };
 }
 
@@ -294,6 +336,22 @@ export async function readText(id) {
 export async function readBlobUrl(id) {
   const res = await authed(`${API}/files/${id}?alt=media`, {}, true);
   return URL.createObjectURL(await res.blob());
+}
+
+/**
+ * A photo resized by Google to at most `size` px, so a phone photo of several
+ * MB comes down as a small JPEG. Falls back to the whole file when Drive gives
+ * no thumbnail (yet) or the link has run out.
+ */
+export async function readPhotoUrl(file, size) {
+  if (file.thumbnailLink) {
+    try {
+      await ensureToken();
+      const res = await fetch(file.thumbnailLink.replace(/=s\d+$/, `=s${size}`), { headers: { Authorization: `Bearer ${session?.token}` } });
+      if (res.ok) return URL.createObjectURL(await res.blob());
+    } catch { /* use the whole file */ }
+  }
+  return readBlobUrl(file.id);
 }
 
 export async function updateContent(id, body, mimeType = 'text/plain') {

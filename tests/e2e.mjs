@@ -77,8 +77,8 @@ async function driveRoute(route) {
   const id = idMatch?.[1];
   if (url.pathname.endsWith('/about')) return json({ user: { emailAddress: 'jens@example.com', displayName: 'Jens Olemans' } });
   if (url.pathname.startsWith('/drive/v3/files') && m === 'GET' && !id) {
-    const parent = url.searchParams.get('q').match(/'([^']+)' in parents/)[1];
-    return json({ files: [...files.values()].filter((f) => f.parents.includes(parent) && !f.trashed).map(pub) });
+    const parents = [...url.searchParams.get('q').matchAll(/'([^']+)' in parents/g)].map((x) => x[1]);
+    return json({ files: [...files.values()].filter((f) => f.parents.some((p) => parents.includes(p)) && !f.trashed).map(pub) });
   }
   if (url.pathname.startsWith('/drive/v3/files/') && m === 'GET') {
     const f = files.get(id);

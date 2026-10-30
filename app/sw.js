@@ -5,7 +5,7 @@
 // refreshed in the background. The
 // recipe index tries the network first for 3 seconds. Photos are kept once
 // seen (a replaced photo gets a new file name, so a kept one is never stale).
-// On localhost everything tries the network first, so edits show at once.
+// On localhost everything else tries the network first, so edits show at once.
 //
 // build.py replaces the version below with a fingerprint of the site files,
 // so every release is a new service worker that installs the whole new
@@ -53,6 +53,10 @@ async function networkFirst(req, timeout) {
   }
 }
 
+async function cacheFirst(req) {
+  return (await cached(req)) || fresh(req);
+}
+
 async function staleWhileRevalidate(req, ev) {
   const hit = await cached(req);
   const net = fresh(req);
@@ -74,6 +78,8 @@ self.addEventListener('fetch', (ev) => {
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
   // Every page of the site is index.html with a different #hash.
   const key = req.mode === 'navigate' ? new Request(new URL('./', self.registration.scope)) : req;
+  // A photo's name changes with the photo, so a kept one is always right.
+  if (/\/(img|thumb)\/[^/]+\.jpg$/.test(url.pathname)) { ev.respondWith(cacheFirst(req)); return; }
   if (LOCAL) { ev.respondWith(networkFirst(key)); return; }
   if (url.pathname.endsWith('/data/recipes.json')) { ev.respondWith(networkFirst(req, 3000)); return; }
   ev.respondWith(staleWhileRevalidate(key, ev));

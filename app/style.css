@@ -320,6 +320,10 @@ body:has(.sheet[open]) { overflow: hidden; }
 }
 .card-img img { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease; }
 .card:hover .card-img img { transform: scale(1.03); }
+/* A photo still on its way from Drive: the frame keeps its place and shimmers. */
+.skeleton { background: linear-gradient(100deg, var(--soft) 40%, var(--line) 50%, var(--soft) 60%) var(--soft); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+@keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 .ph { font-size: 64px; font-weight: 800; color: var(--muted); opacity: .5; }
 .card-body { display: flex; flex-direction: column; gap: 2px; }
 .card-title { font-size: 19px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; }
