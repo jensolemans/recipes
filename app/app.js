@@ -448,6 +448,16 @@ async function fullPhoto(e) {
   } catch { e.fullPending = img; }
 }
 
+/**
+ * The card photo, already on the device, fills the frame until the full-size
+ * photo is in, so a recipe opened for the first time does not show an empty
+ * frame first.
+ */
+function heroBackdrop(e) {
+  const fig = $(`.recipe[data-path="${CSS.escape(e.path)}"] .hero`);
+  if (fig && e.thumbUrl && e.thumbUrl !== e.imageUrl) fig.style.backgroundImage = `url(${JSON.stringify(e.thumbUrl)})`;
+}
+
 /** Puts a photo that came in from Drive into the page, wherever it shows. */
 function showPhoto(e) {
   const href = `#/r/${encPath(e.path)}`;
@@ -460,6 +470,7 @@ function showPhoto(e) {
     fig.classList.remove('skeleton');
     fig.innerHTML = `<img src="${esc(e.imageUrl)}" alt="${esc(e.title)}">`;
     fullPhoto(e);
+    heroBackdrop(e);
   } else {
     fig.closest('.recipe-top').classList.remove('has-img');
     fig.remove();
@@ -1114,6 +1125,7 @@ async function showRecipe(rawPath, params) {
   // A photo that cannot load (offline and not kept yet) falls back to the
   // card photo, else it goes, rather than showing a broken image.
   fullPhoto(e);
+  heroBackdrop(e);
   const hero = $('.hero img');
   if (hero) hero.onerror = () => {
     if (e.thumbUrl && hero.getAttribute('src') !== e.thumbUrl) { hero.src = e.thumbUrl; return; }

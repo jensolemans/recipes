@@ -341,7 +341,7 @@ body:has(.sheet[open]) { overflow: hidden; }
 
 .recipe-top { display: grid; gap: 28px; }
 .recipe-top.has-img { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; }
-.hero { margin: 0; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; background: var(--soft); }
+.hero { margin: 0; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; background: var(--soft) center / cover no-repeat; }
 .hero img { width: 100%; height: 100%; object-fit: cover; }
 .recipe-head h1 {
   margin: 0 0 12px; font-weight: 800; letter-spacing: -.03em; line-height: 1;
