@@ -795,7 +795,12 @@ const newPage = async (opts = {}) => {
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
   await shot('item-card-wide-dark');
   await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-  await page.click('#item [data-close]');
+  const stepLink = page.locator('#item .item-step').first();
+  ok(await stepLink.count() === 1 && /^#\/cook\/.+step=\d+$/.test(await stepLink.getAttribute('href')), 'the item card links to the steps that use it');
+  const stepNo = (await stepLink.textContent()).replace(/\D/g, '');
+  await stepLink.click();
+  await page.waitForSelector('#cook');
+  ok(!(await page.isVisible('#item')) && page.url().endsWith(`step=${stepNo}`), 'a step link opens cook mode at that step');
   await page.goto(`${BASE}/#/`);
   await page.setViewportSize({ width: 1000, height: 900 });
   await page.waitForTimeout(300);
@@ -948,19 +953,27 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('.btn-new', { timeout: 10000 });
   ok(worker.tokens === 2 && !(await page.$('#signin')), 'an hour later it renews quietly, no Renew sign-in');
 
-  // With the connector, New and Edit open Claude with the request typed in.
-  const newHref = await page.getAttribute('.btn-new', 'href');
-  ok(newHref.startsWith('https://claude.ai/new?q=') && await page.getAttribute('.btn-new', 'target') === '_blank', 'New opens Claude in a new tab');
-  ok(await page.$('.menu-pop a[href="#/new"]'), 'the account menu keeps New blank recipe for the editor');
+  // With the connector, New and Edit ask how: Claude with the request typed in, or the editor.
+  await page.click('.btn-new');
+  await page.waitForSelector('#choose[open]');
+  const newHref = await page.getAttribute('#choose [data-pick="claude"]', 'href');
+  ok(newHref.startsWith('https://claude.ai/new?q=') && await page.getAttribute('#choose [data-pick="claude"]', 'target') === '_blank', 'New offers Claude in a new tab');
+  ok(await page.$('#choose a[href="#/new"]'), 'New offers a blank recipe in the editor');
+  await page.keyboard.press('Escape');
   await page.click('a.card');
   await page.waitForSelector('#edit-btn');
   const recipePath = decodeURIComponent(await page.evaluate(() => location.hash)).replace(/^#\/r\//, '').replace(/\?.*$/, '');
-  ok(decodeURIComponent(await page.getAttribute('#edit-btn', 'href')) === `https://claude.ai/new?q=Change my recipe ${recipePath}.cook: `, 'Edit opens Claude with the recipe path');
-  ok(await page.$(`.recipe-more a[href="#/edit/${recipePath.split('/').map(encodeURIComponent).join('/')}"]`), 'Edit file in the ⋯ menu opens the editor');
+  await page.click('#edit-btn');
+  await page.waitForSelector('#choose[open]');
+  ok(decodeURIComponent(await page.getAttribute('#choose [data-pick="claude"]', 'href')) === `https://claude.ai/new?q=Change my recipe ${recipePath}.cook: `, 'Edit offers Claude with the recipe path');
+  await page.keyboard.press('Escape');
   await page.context().setOffline(true);
   await page.click('#edit-btn');
+  await page.waitForSelector('#choose[open]');
+  ok((await page.textContent('#choose .is-off')).includes("You're offline") && !(await page.$('#choose [data-pick="claude"]')), 'offline, Edit says why Claude is out');
+  await page.click(`#choose a[href="#/edit/${recipePath.split('/').map(encodeURIComponent).join('/')}"]`);
   await page.waitForSelector('.editor');
-  ok((await page.textContent('#toast')).includes("You're offline"), 'offline, Edit opens the editor and says why');
+  ok(!(await page.isVisible('#choose')), 'Edit the file opens the editor');
   await page.context().setOffline(false);
   await page.goto(`${BASE}/#/`);
   await page.waitForSelector('.btn-new', { timeout: 10000 });

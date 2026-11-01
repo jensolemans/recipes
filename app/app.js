@@ -247,10 +247,11 @@ function initTheme() {
 
 // ---------------------------------------------------------------- Claude
 //
-// New and Edit open a Claude chat with the start of the request typed in;
-// Claude writes the recipe with the cooklang-recipe skill and saves it to
-// Drive through the recipes connector. Without the connector (no authUrl),
-// offline, or when it does not answer, they open the editor instead.
+// New and Edit ask how: Ask Claude opens a Claude chat with the start of the
+// request typed in (Claude writes the recipe with the cooklang-recipe skill
+// and saves it to Drive through the recipes connector), or the editor.
+// Without the connector (no authUrl) they open the editor straight away;
+// offline, or when it does not answer, the editor comes first.
 
 const CLAUDE_NEW = 'https://claude.ai/new?q=';
 let connector = 'unknown'; // unknown | up | down
@@ -268,11 +269,11 @@ async function checkConnector() {
   }
 }
 
-/** Why New and Edit open the editor instead of Claude, or '' when Claude can take it. */
+/** Why Claude can't take New or Edit right now, or '' when it can. */
 function noClaude() {
   if (!S.config.authUrl) return 'none';
-  if (!navigator.onLine) return "You're offline, so this opens the editor.";
-  if (connector === 'down') return "The recipes connector isn't answering, so this opens the editor.";
+  if (!navigator.onLine) return "You're offline. It works again once you're back online.";
+  if (connector === 'down') return "The recipes connector isn't answering right now.";
   return '';
 }
 
@@ -297,22 +298,63 @@ function claudeLink(path = null) {
   return `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path)))}" target="_blank" rel="noopener" data-claude="${esc(path || '')}"`;
 }
 
-// One handler for every Claude link: the folder is filled in at the tap,
-// and without Claude the editor opens with a line saying why.
+// One handler for every New and Edit button: it asks how.
 document.addEventListener('click', (ev) => {
   const a = ev.target.closest('a[data-claude]');
-  if (!a) return;
-  const path = a.dataset.claude || null;
-  const why = noClaude();
-  if (why) {
-    ev.preventDefault();
-    go(path ? `#/edit/${encPath(path)}` : '#/new');
-    toast(why);
-    return;
-  }
-  a.href = CLAUDE_NEW + encodeURIComponent(claudeText(path));
-  connectorChecked = 0; // look again when the page comes back
+  if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+  ev.preventDefault();
+  closeMenus();
+  openChoose(a, a.dataset.claude || null);
 });
+
+const SPARK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
+const FILE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3.5V8h4.5M9 12.5h6M9 16h6"/></svg>';
+const OFFLINE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l16 16M8.5 12.8a5 5 0 0 1 2.4-1.2M5 9.4a10 10 0 0 1 3-1.9M19 9.4a10 10 0 0 0-6.4-2.9M15.6 12.9l.1.1M12 17.5h.01"/></svg>';
+
+/** Ask Claude or the editor, for a new recipe (no path) or an edit. */
+function openChoose(anchor, path) {
+  const dlg = $('#choose');
+  const pop = wideBrowse.matches;
+  const why = noClaude();
+  const editor = path ? `#/edit/${encPath(path)}` : '#/new';
+  const opt = (main, attrs, icon, title, sub) =>
+    `<a class="choose-opt${main ? ' is-main' : ''}" ${attrs}>${icon}<span><b>${title}</b><small>${sub}</small></span></a>`;
+  const claude = why
+    ? `<div class="choose-opt is-off">${OFFLINE_ICON}<span><b>Ask Claude</b><small>${esc(why)}</small></span></div>`
+    : opt(true, `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path)))}" target="_blank" rel="noopener" data-pick="claude"`, SPARK_ICON, 'Ask Claude',
+      path ? 'Say what to change. Claude rewrites and saves it.' : 'Give a link, text or photo. Claude writes and saves it.');
+  const file = opt(Boolean(why), `href="${editor}" data-pick`, FILE_ICON, path ? 'Edit the file' : 'Start blank',
+    path ? 'Change the Cooklang text yourself.' : 'Write it yourself in the editor.');
+  const title = path ? `Edit ${S.recipes.get(path)?.title || 'recipe'}` : 'New recipe';
+  dlg.setAttribute('aria-label', title);
+  dlg.classList.toggle('is-pop', pop);
+  dlg.innerHTML = `<div class="choose-in">
+    ${pop ? '' : `<div class="sheet-grab" aria-hidden="true"></div>
+    <div class="choose-head"><div><b>${esc(title)}</b><small>${path ? 'How do you want to change it?' : 'How do you want to start?'}</small></div>
+      <button class="sheet-x" data-close aria-label="Close">${CLOSE_ICON}</button></div>`}
+    ${why ? file + claude : claude + file}
+  </div>`;
+  $$('[data-pick]', dlg).forEach((a) => {
+    a.onclick = () => {
+      if (a.dataset.pick === 'claude') connectorChecked = 0; // look again when the page comes back
+      dlg.close();
+    };
+  });
+  const x = $('[data-close]', dlg);
+  if (x) x.onclick = () => dlg.close();
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  dlg.style.left = dlg.style.top = '';
+  dlg.showModal();
+  if (pop) {
+    // Under the button, or above it when there is no room below.
+    const r = anchor.getBoundingClientRect();
+    const w = dlg.offsetWidth, h = dlg.offsetHeight;
+    const left = Math.max(16, Math.min(r.right - w, innerWidth - w - 16));
+    const top = r.bottom + 8 + h > innerHeight - 8 ? Math.max(8, r.top - 8 - h) : r.bottom + 8;
+    dlg.style.left = `${left}px`;
+    dlg.style.top = `${top}px`;
+  }
+}
 
 // ---------------------------------------------------------------- menus
 
@@ -346,7 +388,6 @@ function renderAccount() {
           <p class="menu-note">You see live recipes from Google Drive. Friends see changes after the next hourly update.</p>
           ${S.config.publishUrl ? `<a class="menu-item" href="${esc(S.config.publishUrl)}" target="_blank" rel="noopener">Update the friends' site now</a>` : ''}
           <button class="menu-item" data-action="refresh">Reload from Google Drive</button>
-          <a class="menu-item" href="#/new">New blank recipe</a>
           <button class="menu-item" data-action="signout">Sign out</button>
         </div>
       </details>`;
@@ -1110,9 +1151,7 @@ async function showRecipe(rawPath, params) {
               <div class="menu-pop">
                 ${owner ? '<button class="menu-item" id="share-btn" aria-haspopup="dialog">Share</button>' : ''}
                 <button class="menu-item" id="print-btn">Print</button>
-                ${canEdit ? '<button class="menu-item" id="photo-btn" aria-haspopup="dialog">Change photo</button>' : ''}
-                ${owner ? `<a class="menu-item" href="#/edit/${encPath(path)}">Edit file</a>` : ''}
-              </div>
+                ${canEdit ? '<button class="menu-item" id="photo-btn" aria-haspopup="dialog">Change photo</button>' : ''}              </div>
             </details>`
               : `<button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>`}
           </div>
@@ -2197,7 +2236,14 @@ function itemSheet(row) {
     const sections = shopCtx().aisle.sections;
     const recipe = recipeId ? b.recipes.find((r) => r.id === recipeId) : null;
     const uses = [
-      ...g.sources.map((src) => `<li><b>${esc(amount(src.total))}</b><span>${esc(src.title)}</span></li>`),
+      ...g.sources.map((src) => {
+        const r = b.recipes.find((x) => x.id === src.recipeId);
+        const e = r && S.recipes.get(r.path);
+        if (!e) return `<li><b>${esc(amount(src.total))}</b><span>${esc(src.title)}</span></li>`;
+        const q = r.servings ? `s=${r.servings}` : r.factor && r.factor !== 1 ? `x=${r.factor}` : '';
+        const steps = stepsUsing(e.src, g.key).map((n) => `<a class="item-step" href="#/cook/${encPath(r.path)}?${q ? q + '&' : ''}step=${n}">Step ${n}</a>`);
+        return `<li><b>${esc(amount(src.total))}</b><span><a href="#/r/${encPath(r.path)}${q ? '?' + q : ''}">${esc(src.title)}</a>${steps.length ? `<span class="item-steps">${steps.join('')}</span>` : ''}</span></li>`;
+      }),
       ...b.manual.filter((it) => it.key === g.key).map((it) => `<li class="is-you"><b>${esc(amount(it.total))}</b><span>Added by you</span></li>`),
     ];
     const aisle = g.home
@@ -2216,11 +2262,25 @@ function itemSheet(row) {
       ${aisle}${pantry}
       <button class="btn item-remove" data-act="remove">${TRASH_ICON}${esc(recipe ? `Remove from ${recipe.title}` : 'Remove from list')}</button>`;
     $('[data-close]', dlg).onclick = () => dlg.close();
+    $$('a', dlg).forEach((a) => { a.onclick = () => dlg.close(); });
     $$('[data-act]', dlg).forEach((el) => { el.onclick = () => acts[el.dataset.act](g, recipe, el); });
     return g;
   };
   dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
   if (render()) dlg.showModal();
+}
+
+/** The method steps that use the list line `key`, numbered as in cook mode. */
+function stepsUsing(src, key) {
+  const { recipe } = parseRecipe(src, 1);
+  if (!recipe) return [];
+  const aisle = shopCtx().aisle;
+  // The same keys the shopping list gives each ingredient.
+  const keyOf = (ing) => {
+    const ref = refPath(ing);
+    return ref ? lower(S.recipes.get(ref)?.title || ing.name) : shop.lookup(aisle, ing.name).key;
+  };
+  return cookSteps(recipe).map((s, i) => (s.ings.some((ing) => keyOf(ing) === key) ? i + 1 : 0)).filter(Boolean);
 }
 
 /** Changes aisle.conf or pantry.conf in Drive. Call straight from a tap. */
