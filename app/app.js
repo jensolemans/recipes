@@ -151,6 +151,7 @@ async function boot() {
   renderAccount();
   renderFoot();
   initSide();
+  initTimers();
   window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', (ev) => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
   route();
@@ -2312,14 +2313,43 @@ async function editConf(kind, change) {
 
 // ---------------------------------------------------------------- timers
 
-const timers = [];
+// Timers keep an end time, not a countdown, and are saved on the device, so a
+// reload, a closed tab or another tab of the site picks them up where they are.
+const timers = saved.get('timers', []);
 let timerTick = null;
+
+function saveTimers() { saved.set('timers', timers); }
+
+function tickTimers() {
+  renderTimers();
+  if (timers.length && !timerTick) timerTick = setInterval(renderTimers, 500);
+}
+
+function initTimers() {
+  window.addEventListener('storage', (ev) => {
+    if (ev.key !== 'recipes.timers') return;
+    timers.splice(0, timers.length, ...saved.get('timers', []));
+    tickTimers();
+  });
+  // Closing the tab stops the alarm, so ask first while one is counting down.
+  window.addEventListener('beforeunload', (ev) => {
+    if (timers.some((t) => !t.done && t.paused == null)) { ev.preventDefault(); ev.returnValue = ''; }
+  });
+  tickTimers();
+}
 
 function startTimer(secs, label, recipeTitle, key = null) {
   timers.push({ id: Math.random().toString(36).slice(2), key, label, recipeTitle, end: Date.now() + secs * 1000, total: secs, paused: null, done: false });
   try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch { /* ignore */ }
+  saveTimers();
+  tickTimers();
+}
+
+function pauseTimer(t) {
+  if (t.paused != null) { t.end = Date.now() + t.paused * 1000; t.paused = null; }
+  else t.paused = (t.end - Date.now()) / 1000;
+  saveTimers();
   renderTimers();
-  if (!timerTick) timerTick = setInterval(renderTimers, 500);
 }
 
 function fmtClock(s) {
@@ -2333,6 +2363,9 @@ let lastBeep = 0;
 
 function beep() {
   lastBeep = Date.now();
+  // Right after a reload the page may not play sound or vibrate until it is
+  // tapped; beeps queued before that would all sound at once.
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     const ctx = audio;
@@ -2363,8 +2396,9 @@ function renderTimers() {
   const el = $('#timers');
   const now = Date.now();
   for (const t of timers) {
-    if (!t.done && !t.paused && t.end <= now) {
+    if (!t.done && t.paused == null && t.end <= now) {
       t.done = true;
+      saveTimers();
       beep();
       if (document.hidden) notify('Timer done', `${t.label} for ${t.recipeTitle}`);
     }
@@ -2388,9 +2422,9 @@ function renderTimers() {
     const t = timers.find((x) => x.id === row.dataset.id);
     row.querySelectorAll('[data-act]').forEach((b) => {
       b.onclick = () => {
-        if (b.dataset.act === 'close') timers.splice(timers.indexOf(t), 1);
-        else if (t.paused != null) { t.end = Date.now() + t.paused * 1000; t.paused = null; }
-        else t.paused = (t.end - Date.now()) / 1000;
+        if (b.dataset.act !== 'close') { pauseTimer(t); return; }
+        timers.splice(timers.indexOf(t), 1);
+        saveTimers();
         renderTimers();
       };
     });
@@ -2406,12 +2440,7 @@ function wireTimerChips(root, path, recipeTitle) {
     b.dataset.key = `${path}#${b.dataset.timer}`;
     b.onclick = () => {
       const t = timers.find((x) => x.key === b.dataset.key);
-      if (t && !t.done) {
-        if (t.paused != null) { t.end = Date.now() + t.paused * 1000; t.paused = null; }
-        else t.paused = (t.end - Date.now()) / 1000;
-        renderTimers();
-        return;
-      }
+      if (t && !t.done) { pauseTimer(t); return; }
       if (t) timers.splice(timers.indexOf(t), 1);
       startTimer(Number(b.dataset.secs), b.dataset.label, recipeTitle, b.dataset.key);
     };
