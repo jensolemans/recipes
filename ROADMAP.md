@@ -177,7 +177,14 @@ The planning features, built the same way as the shopping list.
 - [ ] **Search by ingredient.** "What can I make with leek and feta", with
   "without" for things to leave out. *Mealie, Samsung Food, Paprika.* The
   parsed recipes already list their ingredients.
-- [ ] **What to cook tonight.** A random pick within the current filters.
+- [ ] **What to cook tonight.** Help with the hardest part of cooking:
+  picking something. A button on the home page gives one recipe, random but
+  weighted, with a line on why it was picked and "Another one", Cook and
+  Save. It weighs up the season (season tags, else in-season produce and
+  how it is cooked: stews in winter, salads in summer), favourites not cooked
+  in a while and nothing cooked in the last week or two (from Cooked
+  history), what is in Saved, and the day (quick on weeknights, a bigger
+  project at the weekend). Within the current filters, else mains.
   *Paprika, Mela, Samsung Food.*
 
 ## Later
@@ -217,7 +224,6 @@ Useful, but lower priority.
   their browser, without editing rights. *NYT Cooking, Samsung Food.*
 - [ ] **"I made this" notes from friends.** Comments on recipes, which needs a
   free backend. *NYT Cooking.*
-- [ ] **In season.** Suggest recipes that fit the current season.
 - [ ] **Recipe helper.** "Make this vegetarian" or "what can I use instead of
   crème fraîche", with Claude behind a small backend.
   *Samsung Food, ReciMe.*
