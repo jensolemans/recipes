@@ -14,11 +14,11 @@ fixes it. Bigger features go in `ROADMAP.md`.
 - At the end of a recipe prompt the user to make changes to improve the recipe based on what they noticed during cooking with either the AI edit or manual.
 - The timers crash when you close the tab or the page reloads. Is there a way to make the timers more reliable?
 - When checking off an item in the shopping list somethimes it gets lined out in place and sometimes moved to the bottom? Why the descrepency. I prefer the move to bottom everywhere. Or am i just wrong. Good to maybe add an animation and sound here? Because the item disappears so fast it is confusing sometimes.
-- Even i get confused sometimes between the edit file and the regular edit with claude. Make it just one edit and prompt the user on how to? So just the two options with AI with Claude and edit file with the editor.
 - Lets add to the cooklang skill that the user should be prompted in the chat if the recipe is very close to being vegan or vegetarian. If its only because of some ansjovis fillets in the sauce that makes it meat, and otherwise the whole dish is vegan, give them a suggestion to leave it out or replace to make it vegan. Same with if it's only because of a chicken stock cube, suggest that they replace it in the recipe with veg stock to make it vegetarian/vegan.
 - Idea to add a "muliplayer" mode where i can invite guests to add recipes and ingredients to my plan and shopping cart and with their icon behind the items they added so you can see who did what? 
 
 ## Fixed
+- Even i get confused sometimes between the edit file and the regular edit with claude. Make it just one edit and prompt the user on how to? So just the two options with AI with Claude and edit file with the editor.
 - In the info screen of an item in the shopping basket. Add a link to the step in the recipe where it is used. Can be usefull in the store to see in the recipe how this ingredient will be used.
 - pieterthys1@gmail.com tried to log into the site with my permission and he should be given access to my google drive folder. But he got blocked "only the owner of the recipes can."
 - Add a way to quickly undo an "add to shoppping list" as i often do this by mistake or do the servings wrong, etc. Maybe change the button to an "undo" version of the basket if it is already in the basket??? You'll never add it twice, just change servings?
