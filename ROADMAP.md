@@ -109,28 +109,66 @@ Mostly front end, quick wins, used every week.
 
 The planning features, built the same way as the shopping list.
 
-- [ ] **Meal planner.** For meal prep weeks: pick recipes first, put them on
-  days after. *Mealime, Plan to Eat, Paprika, Samsung Food.*
-  - **Unplanned.** "Add to plan" on every recipe puts it in Unplanned, a
-    list without dates. A recipe leaves Unplanned once it is put on a day.
-  - **Menu.** Has a start and end date (native date inputs, 1 and 2 week
-    shortcuts). Days go down, Breakfast, Lunch, Dinner and Snacks across.
-    One servings number scales the whole menu. Old menus are kept; a
-    switcher opens the one that covers today.
-  - **Plan page** (`#/plan`), in the top bar and as a phone tab. Desktop:
-    the normal recipe list on the left, the calendar on the right with
-    Unplanned as a tray. Drag from the tray or straight from the recipe
-    list into a slot, and between slots. Phone: the calendar with the tray
-    at the bottom; tap a tray recipe to pick it up, then tap slots to place
-    it.
-  - **Slots** hold recipes and ingredients (a + per slot, like "apples 4"),
-    no notes. Clicking a recipe opens it.
-  - **Add to shopping list** sends the menu into the existing list.
-  - **Storage.** Each menu is a Cooklang `.menu` file in Drive
-    (`Plans/2026-11-02.menu`, days as `== 2026-11-02 ==`), Unplanned is
-    `config/unplanned.json`, both with the shopping list's offline queue.
-    Check the `.menu` syntax against cooklang.org first, and keep build.py
-    from reading `.menu` files as recipes.
+- [ ] **Meal planner.** Save recipes you want to cook, put them on days if
+  you like, shop it in one go and cook from Today. Signed in only; friends
+  never see Plan. Design and mockups: the "Recipe planner" page
+  (https://claude.ai/artifact/LPkwtHPAf7aphED45axHaM).
+  *Mealime, Plan to Eat, Paprika, Samsung Food.*
+  - **Saved.** The shortlist of recipes you mean to cook, the one used most:
+    in the shop you pick from it and shop for those. A Save button on the
+    recipe page puts a recipe straight in, no questions. Someday is a
+    wishlist below it that is never shopped. "Cooking for" sets the default
+    servings; each recipe can have its own servings and a note. A recipe
+    leaves Saved when it is put on a day. (Names not final.)
+  - **Planned.** The days, for planning further: a few days, a week, or two.
+    Days run from today to 3 days ahead, or to the last planned day; a ghost
+    day with a + at the end adds one more empty day each time. Past days fold
+    into Earlier. A meal (Breakfast, Lunch, Dinner, Snack) can hold several
+    recipes; the row just gets longer. The + on a day adds a loose
+    ingredient, a meal without a recipe ("Eating out") or a note.
+  - **Side panel with three states**, like the shopping list's: hidden (an
+    icon in the top bar), split on the right, full screen; buttons move
+    between them. In every state it shows the plan or the shopping list, with
+    a toggle. Full screen shows the days as a real week. On phones, Plan and
+    List are tabs in the bottom bar with New (+) in the middle, and the Plan
+    tab is the full screen view. Drag recipe cards into Saved and, where the
+    browser allows, on into a day in one move.
+  - **Meals.** Servings, leftovers (any later day and meal, or Freezer,
+    added to the servings cooked), cook again (every day, weekdays, picked
+    days), move, remove. Alt drag copies on desktop. Cooked early (Tuesday
+    for Wednesday) shows as cooked on its own day.
+  - **Cooking is ticked on purpose.** A meal only counts as cooked from cook
+    mode or Done. One that is not cooked moves on to the next day by itself,
+    with a warning icon ("moved from Tue"), and you sort the plan yourself.
+  - **Shopping.** A check page first, with a range of days to shop for,
+    recipes to untick, totals and Probably have. Someday, leftovers and
+    eating out add nothing, lines already on the list are not added twice.
+    Changing servings or removing a meal updates the list (bought lines
+    stay); removing a recipe on the list puts it back to planned.
+  - **Today** on top of the home page (phone and desktop): the day's note
+    and meals with Cook or Done.
+  - **States.** Saved or planned, In list, Bought (all its lines ticked),
+    Cooked.
+  - **Storage.** `config/plan.json` in Drive (Saved, Cooking for, days),
+    with the shopping list's offline queue. Meals point to recipe paths:
+    moving a recipe in the app or through the connector updates the plan;
+    a path that is gone is looked up by name, else the meal shows "This
+    recipe was deleted".
+- [ ] **Plans through Claude.** Connector tools to read and change the plan
+  (`read_plan`, `plan_recipe`, `move_meal`), so a saved import can go
+  straight into Saved and "plan me five dinners from my collection,
+  nothing over 45 minutes on weekdays" works from any chat.
+- [ ] **Cooked history.** The recipe page shows when it was last cooked and
+  how often, from the plan's Cooked meals and the finish flow in cook mode.
+- [ ] **Cook several recipes at once.** For a meal prep session or a dinner
+  with sides: pick planned recipes and cook mode merges them into one run,
+  ordered so long steps (oven, simmering, resting) start first and short ones
+  fit in between, each step labelled with its recipe. Timers from all of them
+  in one bar. *Samsung Food, Mealime.*
+- [ ] **Reminder the day before.** A notification the evening before for
+  steps that need time: marinate, soak, defrost, proof. Found from the
+  planned recipes' steps and timers, or marked in the recipe. Needs a push
+  notification from the Worker, since the site is closed by then.
 - [ ] **Favourites and collections.** Hand-picked, ordered lists across
   folders, like "Weeknight", "Christmas" or "To try". Shown as a filter on
   the home page. *NYT Cooking (recipe box), Mealie and Paprika (cookbooks).*
