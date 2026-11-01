@@ -497,9 +497,10 @@ button.timer-chip:hover { background: var(--line); }
 
 /* ---------- toast + modal ---------- */
 .toast {
-  position: fixed; left: 50%; top: 16px; transform: translate(-50%, -140%); z-index: 40;
-  background: var(--ink); color: var(--paper); padding: 12px 18px; border-radius: 12px; max-width: min(520px, calc(100% - 32px));
-  font-size: 15px; box-shadow: var(--shadow); transition: transform .25s ease, visibility .25s;
+  position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translate(-50%, -140%); z-index: 40;
+  background: var(--ink); color: var(--paper); padding: 6px 6px 6px 18px; border-radius: 14px;
+  width: min(640px, calc(100% - 24px)); min-height: 56px;
+  font-size: 15px; line-height: 1.4; box-shadow: var(--shadow); transition: transform .25s ease, visibility .25s;
   visibility: hidden;
 }
 .toast.is-on { transform: translate(-50%, 0); visibility: visible; }
@@ -512,11 +513,20 @@ button.timer-chip:hover { background: var(--line); }
 .modal p { margin: 0 0 20px; color: var(--muted); }
 .modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 
-.toast { display: flex; align-items: center; gap: 14px; }
+.toast { display: flex; align-items: center; gap: 6px; }
+.toast-msg { flex: 1; min-width: 0; padding: 8px 6px 8px 0; }
 .toast-btn {
-  flex: none; border: 0; background: none; color: inherit; font-weight: 700; cursor: pointer;
-  text-decoration: underline; text-underline-offset: 3px; padding: 4px 2px;
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px 0 11px;
+  border: 0; border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer;
 }
+.toast-x {
+  flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: inherit; cursor: pointer; opacity: .75;
+}
+.toast-btn:hover { opacity: .88; }
+.toast-x:hover { opacity: 1; background: color-mix(in srgb, var(--paper) 14%, transparent); }
+.toast-btn svg, .toast-x svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toast-x svg { width: 20px; height: 20px; }
 .modal-field { margin: 0 0 20px; }
 .modal-field select, .modal-field input { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 12px; }
 .modal-field input:focus { outline: none; border-color: var(--strong); }
@@ -740,7 +750,7 @@ body.has-side { --side-w: 44px; padding-right: var(--side-w); }
 body.side-open { --side-w: 340px; }
 body.has-side .account .icon-link { display: none; }
 body.has-side .toast, body.has-side .timers { left: calc(50% - var(--side-w) / 2); }
-body.has-side .toast { max-width: min(520px, calc(100% - var(--side-w) - 32px)); }
+body.has-side .toast { width: min(640px, calc(100% - var(--side-w) - 32px)); }
 .side {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: var(--side-w);
   background: var(--card); border-left: 1px solid var(--line);

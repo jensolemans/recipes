@@ -3183,15 +3183,27 @@ async function showEditor(rawPath) {
 
 // ---------------------------------------------------------------- toast + modal
 
+const TOAST_ICONS = {
+  Undo: '<path d="M9 14 4.5 9.5 9 5"/><path d="M4.5 9.5h10a5 5 0 0 1 0 10H11"/>',
+  Reload: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/>',
+  Save: '<path d="M5.5 12.5l4 4 9-9"/>',
+  Discard: '<path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"/>',
+};
 let toastTimer;
-/** Shows a short message, optionally with one action button such as Undo. */
+/** Shows a short message with a close button, optionally with one action such as Undo. */
 function toast(msg, action) {
   const el = $('#toast');
-  el.innerHTML = `<span>${esc(msg)}</span>${action ? `<button class="toast-btn">${esc(action.label)}</button>` : ''}`;
-  if (action) el.querySelector('.toast-btn').onclick = () => { el.classList.remove('is-on'); action.run(); };
+  const icon = action && TOAST_ICONS[action.label];
+  el.innerHTML = `<span class="toast-msg">${esc(msg)}</span>${action ? `<button class="toast-btn">${icon ? `<svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>` : ''}${esc(action.label)}</button>` : ''}<button class="toast-x" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>`;
+  const hide = () => { clearTimeout(toastTimer); el.classList.remove('is-on'); };
+  if (action) el.querySelector('.toast-btn').onclick = () => { hide(); action.run(); };
+  el.querySelector('.toast-x').onclick = hide;
+  // A swipe up puts it away too.
+  el.ontouchstart = (e) => { el.dataset.y = e.touches[0].clientY; };
+  el.ontouchend = (e) => { if (el.dataset.y - e.changedTouches[0].clientY > 24) hide(); };
   el.classList.add('is-on');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('is-on'), action ? 7000 : 5200);
+  toastTimer = setTimeout(hide, action ? 7000 : 5200);
 }
 
 function ask({ title, body, actions }) {
