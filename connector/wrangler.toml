@@ -7,6 +7,7 @@ compatibility_date = "2025-09-01"
 [vars]
 GOOGLE_CLIENT_ID = "612577168689-q2nat9m25bco0uc48khnar9k0km1ck3v.apps.googleusercontent.com"
 ALLOWED_ORIGINS = "https://jensolemans.github.io,http://localhost:8000"
+# The owner. Anyone else signs in when the Drive folder is shared with them as an editor.
 ALLOWED_EMAILS = "jens.olemans@gmail.com"
 # Where Claude's tokens may be sent: Claude on the web and in the apps, and Claude Code here.
 ALLOWED_REDIRECT_HOSTS = "claude.ai,claude.com,localhost,127.0.0.1"

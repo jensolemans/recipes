@@ -8,6 +8,8 @@ import crypto from 'crypto';
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 let email = process.env.FAKE_EMAIL || 'jens.olemans@gmail.com';
 let refreshes = 0;
+// Who the recipes folder is shared with (the owner is let in by ALLOWED_EMAILS). reader can only view.
+const editors = ['friend@gmail.com', 'reader@gmail.com'];
 
 const FOLDER = 'application/vnd.google-apps.folder';
 const lintSrc = process.argv[2] ? fs.readFileSync(process.argv[2], 'utf8') : "FOLDER_FOR_COURSE = {'main': '05 Mains',\n  'dessert': '09 Desserts'}\n";
@@ -39,6 +41,11 @@ const store = (f, buf, type) => { if (/^image\//.test(type)) { f.bin = buf; f.bo
 
 async function drive(req, res, u) {
   res.setHeader('Content-Type', 'application/json');
+  // The sign-in asks whether the account may edit the recipes folder, with the first key.
+  if (u.pathname === '/drive/v3/files/ROOT' && req.headers.authorization === 'Bearer a0') {
+    if (!editors.includes(email)) { res.statusCode = 404; return res.end('{}'); }
+    return res.end(JSON.stringify({ capabilities: { canEdit: email !== 'reader@gmail.com' } }));
+  }
   if (!/^Bearer fresh\d+$/.test(req.headers.authorization || '')) { res.statusCode = 401; return res.end('{}'); }
   if (u.pathname === '/upload/drive/v3/files' && req.method === 'POST') {
     const raw = (await readBuf(req)).toString('latin1');

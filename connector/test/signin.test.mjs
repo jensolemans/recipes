@@ -33,6 +33,10 @@ r = await post('/auth/token', { pass: got.pass }, 'https://evil.example'); ok(!r
 r = await fetch(`${W}/auth/start?login=${rid()}&origin=https://evil.example`, { redirect: 'manual' }); ok(r.status === 400, 'start refuses other sites');
 r = await post('/auth/signout', { pass: got.pass }); ok(r.status === 200, 'sign out');
 r = await post('/auth/token', { pass: got.pass }); ok(r.status === 401, 'pass dead after sign out');
+s = await signIn('friend@gmail.com');
+ok(s.status === 200 && s.html.includes('Signed in'), 'a friend the folder is shared with can sign in');
+s = await signIn('reader@gmail.com');
+ok(s.status === 403 && s.html.includes('Not allowed'), 'view-only sharing is not enough');
 s = await signIn('someone.else@gmail.com');
 ok(s.status === 403 && s.html.includes('Not allowed'), 'other Google accounts refused');
 r = await post('/auth/redeem', { login: s.login }); ok(r.status === 202, 'refused sign-in leaves no pass');

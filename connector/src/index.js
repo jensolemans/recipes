@@ -6,7 +6,9 @@
 // 2. The recipes connector for Claude (MCP at /mcp, tools in mcp.js). Claude
 //    signs in with OAuth: /authorize shows an Allow page, then Google, and
 //    the library (@cloudflare/workers-oauth-provider) hands Claude its own
-//    tokens. Only Jens's Google account gets through, and only to Claude.
+//    tokens. Only Google accounts that can edit the recipes folder get through
+//    (the owner in ALLOWED_EMAILS, and anyone the folder is shared with as an
+//    editor), and only to Claude.
 //
 // The site's sign-in works without cookies or window.opener, so it survives
 // Safari's tracking rules and the home-screen app:
@@ -31,6 +33,7 @@ const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'openid email profile https://www.googleapis.com/auth/drive';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
+const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const TEN_MIN = 600;
 const ID_RE = /^[A-Za-z0-9_-]{32,64}$/;
 
@@ -128,7 +131,7 @@ Access goes to <strong>${esc(d.redirectHost)}</strong>.</p>${local}
 <form method="post"><input type="hidden" name="handle" value="${esc(handle)}">
 <p class="actions"><button name="decision" value="approve">Allow</button>
 <button name="decision" value="deny" class="quiet">Cancel</button></p></form>
-<p class="small">Next, Google asks you to sign in. Only the owner of the recipes can connect.</p>`);
+<p class="small">Next, Google asks you to sign in. Only people who can edit the recipes folder in Google Drive can connect.</p>`);
 }
 
 // ---------------------------------------------------------------- sign-in
@@ -200,7 +203,7 @@ async function claudeCallback(req, url, env) {
 }
 
 /**
- * Trades Google's code for its keys, checks it is the owner with Drive access,
+ * Trades Google's code for its keys, checks the account may edit the recipes folder,
  * and keeps the refresh token. Returns { email, name }, or an error page.
  */
 async function googleSignIn(url, env, retry) {
@@ -223,15 +226,28 @@ async function googleSignIn(url, env, retry) {
   // Straight from Google over HTTPS, so the id token needs no signature check.
   const who = decodeJwt(t.id_token);
   const email = String(who.email || '').toLowerCase();
-  if (!who.email_verified || !allowedEmails(env).includes(email)) {
-    return page('Not allowed', `${email || 'This account'} cannot sign in here. Only the owner of the recipes can.`, 403);
-  }
+  if (!who.email_verified) return notAllowed(email);
   if (!String(t.scope || '').split(' ').includes(DRIVE_SCOPE)) {
     return page('Google Drive access is needed', 'Sign in again and leave the Google Drive box ticked, so your recipes can be opened.', 400);
   }
+  if (!allowedEmails(env).includes(email) && !(await canEditFolder(env, t.access_token))) return notAllowed(email);
   await env.AUTH.put(`user:${email}`, await seal(env, t.refresh_token));
   accessCache.delete(email);
   return { email, name: String(who.name || '') };
+}
+
+const notAllowed = (email) => page('Not allowed', `${email || 'This account'} cannot sign in here. `
+  + 'Only people who can edit the recipes folder in Google Drive can. Ask the owner to share it with you.', 403);
+
+/** Whether this Google account may change the recipes folder: shared with it as an editor. */
+async function canEditFolder(env, accessToken) {
+  const params = new URLSearchParams({ fields: 'capabilities(canEdit)', supportsAllDrives: 'true' });
+  const res = await fetch(`${env.DRIVE_API || DRIVE_API}/files/${env.GDRIVE_FOLDER_ID}?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return false;
+  const f = await res.json().catch(() => ({}));
+  return f.capabilities?.canEdit === true;
 }
 
 /** The site asks here until the sign-in window is done. Hands the pass out once. */
@@ -310,7 +326,7 @@ async function passInfo(req, env) {
 // Google asks for a privacy policy before the sign-in may leave Testing.
 function privacy(env) {
   const owner = allowedEmails(env)[0] || '';
-  return page('Privacy', `This is a personal recipe site. Only its owner (${owner}) can sign in. `
+  return page('Privacy', `This is a personal recipe site. Only its owner (${owner}) and the people the recipes folder is shared with can sign in. `
     + 'Signing in lets the site read and change the recipe files in the owner\'s own Google Drive. '
     + 'The sign-in key is stored encrypted on this server only to keep the owner signed in, and is never shared or used for anything else. '
     + 'Visitors who do not sign in are not tracked and nothing about them is stored.');

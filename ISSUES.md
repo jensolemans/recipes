@@ -13,6 +13,7 @@ fixes it. Bigger features go in `ROADMAP.md`.
 - On desktop the site stays quite centered in the middle. Looks OK. But could be useful to use more of the screen and not have the big black sides on a 16:9 monitor.
 
 ## Fixed
+- pieterthys1@gmail.com tried to log into the site with my permission and he should be given access to my google drive folder. But he got blocked "only the owner of the recipes can."
 - Add a way to quickly undo an "add to shoppping list" as i often do this by mistake or do the servings wrong, etc. Maybe change the button to an "undo" version of the basket if it is already in the basket??? You'll never add it twice, just change servings?
 - In recipe page's don't make the ingredients and tools a seperate scrollable box, just let the list be longer than the recipe text.
 - When clicking things on mobile for a brief second a light blue highlight shows the "hitbox" of what was clicked.

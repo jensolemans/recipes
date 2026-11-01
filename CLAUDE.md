@@ -94,7 +94,7 @@ folders use the same files.
   uses it when `authUrl` is set (repo variable `AUTH_URL`), else the one-hour
   token flow. It is also the recipes connector for Claude (MCP at `/mcp`,
   `src/mcp.js`): Claude connects with OAuth (an Allow page, then Google;
-  only Jens's account, only Claude's addresses) and gets list_folders,
+  only Jens and accounts the Drive folder is shared with as editors, only Claude's addresses) and gets list_folders,
   find_recipes, read_recipe, save_recipe (in place, refused when the version
   changed or the house style fails: `src/lint.js` ports cooklint and reads
   its word lists from `tools/cooklint.py`), move_recipe and set_photo

@@ -32,6 +32,12 @@ without it, the site signs in with Google for an hour at a time as before.
      Google ends the sign-in after 7 days. Google shows an "unverified app"
      warning when you sign in; continue past it, it is your own app.
 
+**Letting friends sign in.** Share the recipes folder in Google Drive with
+their Google account as an **Editor**. That is all: at sign-in the Worker asks
+Drive whether the account can edit the folder (the owner in `ALLOWED_EMAILS`
+always can). Remove them from the folder's sharing and they can no longer
+sign in or change anything. View-only sharing is not enough.
+
 3. **Secrets.** In this folder:
 
    ```
