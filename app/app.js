@@ -286,17 +286,18 @@ function currentFolder() {
   return [S.filters.chapter, S.filters.sub].filter(Boolean).join('/');
 }
 
-function claudeText(path) {
+function claudeText(path, after = false) {
+  if (path && after) return `I just cooked my recipe ${path}.cook. Improve it with what I noticed: `;
   if (path) return `Change my recipe ${path}.cook: `;
   const folder = currentFolder();
   return folder ? `New recipe for my collection, probably for ${folder}. ` : 'New recipe for my collection. ';
 }
 
-/** Attributes for a New (no path) or Edit link. */
-function claudeLink(path = null) {
+/** Attributes for a New (no path) or Edit link; `after` asks what to improve after cooking. */
+function claudeLink(path = null, after = false) {
   const editor = path ? `#/edit/${encPath(path)}` : '#/new';
   if (noClaude() === 'none') return `href="${editor}"`;
-  return `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path)))}" target="_blank" rel="noopener" data-claude="${esc(path || '')}"`;
+  return `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path, after)))}" target="_blank" rel="noopener" data-claude="${esc(path || '')}"${after ? ' data-after' : ''}`;
 }
 
 // One handler for every New and Edit button: it asks how.
@@ -305,34 +306,42 @@ document.addEventListener('click', (ev) => {
   if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
   ev.preventDefault();
   closeMenus();
-  openChoose(a, a.dataset.claude || null);
+  openChoose(a, a.dataset.claude || null, 'after' in a.dataset);
 });
 
 const SPARK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
 const FILE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8z"/><path d="M14 3.5V8h4.5M9 12.5h6M9 16h6"/></svg>';
 const OFFLINE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l16 16M8.5 12.8a5 5 0 0 1 2.4-1.2M5 9.4a10 10 0 0 1 3-1.9M19 9.4a10 10 0 0 0-6.4-2.9M15.6 12.9l.1.1M12 17.5h.01"/></svg>';
 
-/** Ask Claude or the editor, for a new recipe (no path) or an edit. */
-function openChoose(anchor, path) {
+/**
+ * Ask Claude or the editor, for a new recipe (no path) or an edit. `after`:
+ * the recipe was just cooked, so it asks what to improve for next time.
+ * `finish`: cook mode's Finish, where finishing without changes comes first.
+ */
+function openChoose(anchor, path, after = false, finish = false) {
   const dlg = $('#choose');
   const pop = wideBrowse.matches;
   const why = noClaude();
   const editor = path ? `#/edit/${encPath(path)}` : '#/new';
-  const opt = (main, attrs, icon, title, sub) =>
-    `<a class="choose-opt${main ? ' is-main' : ''}" ${attrs}>${icon}<span><b>${title}</b><small>${sub}</small></span></a>`;
-  const claude = why
-    ? `<div class="choose-opt is-off">${OFFLINE_ICON}<span><b>Ask Claude</b><small>${esc(why)}</small></span></div>`
-    : opt(true, `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path)))}" target="_blank" rel="noopener" data-pick="claude"`, SPARK_ICON, 'Ask Claude',
-      path ? 'Say what to change. Claude rewrites and saves it.' : 'Give a link, text or photo. Claude writes and saves it.');
-  const file = opt(Boolean(why), `href="${editor}" data-pick`, FILE_ICON, path ? 'Edit the file' : 'Start blank',
+  const opt = (main, attrs, icon, title, sub, tag = 'a') =>
+    `<${tag} class="choose-opt${main ? ' is-main' : ''}" ${attrs}>${icon}<span><b>${title}</b><small>${sub}</small></span></${tag}>`;
+  const claude = why === 'none' ? ''
+    : why ? `<div class="choose-opt is-off">${OFFLINE_ICON}<span><b>Ask Claude</b><small>${esc(why)}</small></span></div>`
+    : opt(!finish, `href="${esc(CLAUDE_NEW + encodeURIComponent(claudeText(path, after)))}" target="_blank" rel="noopener" data-pick="claude"`, SPARK_ICON, 'Ask Claude',
+      after ? 'Tell Claude what you noticed. It improves the recipe and saves it.'
+        : path ? 'Say what to change. Claude rewrites and saves it.' : 'Give a link, text or photo. Claude writes and saves it.');
+  const file = opt(Boolean(why) && !finish, `href="${editor}" data-pick`, FILE_ICON, path ? 'Edit the file' : 'Start blank',
     path ? 'Change the Cooklang text yourself.' : 'Write it yourself in the editor.');
-  const title = path ? `Edit ${S.recipes.get(path)?.title || 'recipe'}` : 'New recipe';
+  const title = after ? 'How did it go?' : path ? `Edit ${S.recipes.get(path)?.title || 'recipe'}` : 'New recipe';
+  const sub = after ? 'Anything to change for next time?'
+    : path ? 'How do you want to change it?' : 'How do you want to start?';
   dlg.setAttribute('aria-label', title);
   dlg.classList.toggle('is-pop', pop);
   dlg.innerHTML = `<div class="choose-in">
-    ${pop ? '' : `<div class="sheet-grab" aria-hidden="true"></div>
-    <div class="choose-head"><div><b>${esc(title)}</b><small>${path ? 'How do you want to change it?' : 'How do you want to start?'}</small></div>
+    ${pop && !after ? '' : `${pop ? '' : '<div class="sheet-grab" aria-hidden="true"></div>'}
+    <div class="choose-head"><div><b>${esc(title)}</b><small>${sub}</small></div>
       <button class="sheet-x" data-close aria-label="Close">${CLOSE_ICON}</button></div>`}
+    ${finish ? opt(true, 'type="button" data-pick="done"', CHECK_ICON, 'Just finish', 'Nothing to change. Back to the recipe.', 'button') : ''}
     ${why ? file + claude : claude + file}
   </div>`;
   $$('[data-pick]', dlg).forEach((a) => {
@@ -1188,6 +1197,8 @@ async function showRecipe(rawPath, params) {
     parsed = parseRecipe(e.src, factor);
     $('#facts').innerHTML = factsList(e, parsed, factor);
     $('#body').innerHTML = recipeBody(parsed, { path });
+    // The end of the method: what you noticed while cooking goes back in.
+    if (owner) $('#body .method').insertAdjacentHTML('beforeend', `<p class="cooked">Cooked it? <a ${claudeLink(path, true)}>Note what to change for next time</a></p>`);
     drawScaler();
     drawAddList();
     wireBody();
@@ -1690,8 +1701,18 @@ async function showCook(rawPath, params) {
     syncHash();
   };
 
+  // Finish: back to the recipe, and when it can be changed here, first ask
+  // what to improve for next time while it is fresh.
+  const finish = () => {
+    if (!(drive.enabled() && drive.wasSignedIn())) { go(backHash()); return; }
+    const dlg = $('#choose');
+    openChoose($('#cook-next'), path, true, true);
+    // Edit the file has already moved on; the rest go back.
+    dlg.addEventListener('close', () => { if (parseHash().path === `/cook/${path}`) go(backHash()); }, { once: true });
+  };
+
   const go2 = (n, dir = 0) => {
-    if (n > steps.length) { go(backHash()); return; }
+    if (n > steps.length) { finish(); return; }
     if (mode === 'scroll') { scrollToStep(Math.max(0, n)); return; }
     at = Math.max(0, n);
     render(dir, true);

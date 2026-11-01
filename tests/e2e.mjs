@@ -967,6 +967,18 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('#choose[open]');
   ok(decodeURIComponent(await page.getAttribute('#choose [data-pick="claude"]', 'href')) === `https://claude.ai/new?q=Change my recipe ${recipePath}.cook: `, 'Edit offers Claude with the recipe path');
   await page.keyboard.press('Escape');
+  ok(decodeURIComponent(await page.getAttribute('.cooked a', 'href')).includes(`I just cooked my recipe ${recipePath}.cook.`), 'the end of the method asks what to change after cooking');
+
+  // Finishing cook mode asks what to improve, with Just finish first.
+  await page.goto(`${BASE}/#/cook/${recipePath.split('/').map(encodeURIComponent).join('/')}?step=999`);
+  await page.waitForSelector('#cook-next');
+  await page.click('#cook-next');
+  await page.waitForSelector('#choose[open]');
+  ok((await page.textContent('#choose .choose-opt.is-main')).includes('Just finish') && await page.$('#choose [data-pick="claude"]'), 'Finish asks how it went, Just finish first');
+  await page.click('#choose [data-pick="done"]');
+  await page.waitForFunction(() => location.hash.startsWith('#/r/'));
+  ok(!(await page.isVisible('#choose')), 'Just finish goes back to the recipe');
+  await page.waitForSelector('#edit-btn');
   await page.context().setOffline(true);
   await page.click('#edit-btn');
   await page.waitForSelector('#choose[open]');

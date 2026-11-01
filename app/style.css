@@ -432,6 +432,8 @@ body:has(.sheet[open]) { overflow: hidden; }
   font-family: var(--text); font-style: italic; font-size: 18px; color: var(--muted); margin: 14px 0;
   padding-left: 16px; border-left: 3px solid var(--line);
 }
+.cooked { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 15px; color: var(--muted); }
+.cooked a { color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
 
 /* the highlighter: ingredients marked inside the method */
 .mark {
@@ -579,6 +581,7 @@ body:has(.choose[open]:not(.is-pop)) { overflow: hidden; }
   display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--line);
   border-radius: 12px; color: inherit; text-decoration: none; background: var(--card);
 }
+button.choose-opt { width: 100%; font: inherit; text-align: left; cursor: pointer; }
 .choose-opt b { display: block; font-size: 16px; line-height: 1.3; }
 .choose-opt small { display: block; color: var(--muted); font-size: 14px; line-height: 1.4; margin-top: 2px; }
 a.choose-opt:hover { border-color: var(--muted); }
@@ -1076,7 +1079,7 @@ html:has(.cook[data-mode="scroll"]) {
     color-scheme: light;
   }
   body { background: #fff; color: #000; font-size: 10.5pt; min-height: 0; display: block; }
-  .topbar, .foot, .side, .tabbar, .timers, .toast, .modal, .share, .item, .skip, .crumbs, .recipe-actions, .tags, .tick { display: none !important; }
+  .topbar, .foot, .side, .tabbar, .timers, .toast, .modal, .share, .item, .skip, .crumbs, .recipe-actions, .tags, .tick, .cooked { display: none !important; }
   main { max-width: none; padding: 0; }
   .print-only { display: block; }
 
