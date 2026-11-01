@@ -1988,7 +1988,7 @@ async function mountList(root, panel) {
   body.addEventListener('change', (ev) => {
     const box = ev.target.closest('.tick');
     if (!box) return;
-    S.shop.do({ t: 'check', key: box.closest('.shop-row').dataset.key, on: box.checked });
+    tickItem(box.closest('.shop-row').dataset.key, box.checked);
   });
   body.addEventListener('click', (ev) => {
     const more = ev.target.closest('[data-more]');
@@ -2144,15 +2144,43 @@ function updateList() {
   body.innerHTML = saved.get('listView', 'aisle') === 'recipe' ? recipeView(b) : aisleView(b);
 }
 
+// A ticked item first shows the tick, then slides away and lands at the
+// bottom (In the basket, or the end of its recipe), so you see where it went.
+const TICK_MS = 550;
+const ticking = new Map(); // key -> { on, start } while a row plays its way out
+const landed = new Map(); // key -> start of the highlight where it lands
+
+function tickItem(key, on) {
+  tickSound(on);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    S.shop.do({ t: 'check', key, on });
+    return;
+  }
+  ticking.set(key, { on, start: Date.now() });
+  updateList();
+  setTimeout(() => {
+    if (ticking.get(key)?.on !== on) return; // ticked again since
+    ticking.delete(key);
+    landed.set(key, Date.now());
+    S.shop.do({ t: 'check', key, on });
+  }, TICK_MS);
+}
+
 function shopRow(g, { total = g.total, recipeId = '', item = '', note = '' } = {}) {
   const qty = amount(total);
   const f = S.flash;
   const isNew = f && Date.now() < f.until && f.keys.has(g.key) && (!recipeId || recipeId === f.recipeId) && !item;
-  // A redraw (after saving to Drive) picks the flash up where it was, so it plays once.
-  const flash = isNew ? ` style="animation-delay:-${Date.now() - f.start}ms"` : '';
-  return `<li class="shop-row${g.checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}${isNew ? ' is-new' : ''}"${flash} data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
+  const tk = ticking.get(g.key);
+  const checked = tk ? tk.on : g.checked;
+  const land = !tk && landed.get(g.key);
+  if (land && Date.now() - land > 1200) landed.delete(g.key);
+  // A redraw (after saving to Drive) picks an animation up where it was, so it plays once.
+  const since = tk ? tk.start : isNew ? f.start : land || 0;
+  const cls = tk ? ' is-leaving' : isNew ? ' is-new' : landed.has(g.key) ? ' is-landed' : '';
+  const delay = cls ? ` style="animation-delay:-${Date.now() - since}ms"` : '';
+  return `<li class="shop-row${checked ? ' is-checked' : ''}${toBuy(g) ? '' : ' is-have'}${cls}"${delay} data-key="${esc(g.key)}" data-recipe="${esc(recipeId)}" data-item="${esc(item)}">
     <label class="shop-main">
-      <input type="checkbox" class="tick" ${g.checked ? 'checked' : ''}>
+      <input type="checkbox" class="tick" ${checked ? 'checked' : ''}>
       <span class="ing-qty">${esc(qty)}</span>
       <span class="shop-name">${esc(g.name)}${note ? `<small>${esc(note)}</small>` : ''}</span>
     </label>
@@ -2180,12 +2208,14 @@ function aisleView(b) {
 }
 
 function recipeView(b) {
+  // Ticked lines go to the end of their recipe, as In the basket does by aisle.
+  const lastIfChecked = (list) => [...list.filter((l) => !l.group.checked), ...list.filter((l) => l.group.checked)];
   const out = b.recipes.map((r) => {
     const q = r.servings ? `?s=${r.servings}` : r.factor && r.factor !== 1 ? `?x=${r.factor}` : '';
     const size = r.servings ? servingsText(r.servings) : r.factor && r.factor !== 1 ? `${r.factor}×` : '';
     const only = r.parts && !r.missing ? `<p class="shop-parts">${esc(cap(partsText(r.parts)))}</p>` : '';
     const title = r.missing ? esc(r.title || prettifyFile(r.path.split('/').pop())) : `<a href="#/r/${encPath(r.path)}${q}">${esc(r.title)}</a>`;
-    const rows = r.lines.map((l) => shopRow(l.group, {
+    const rows = lastIfChecked(r.lines).map((l) => shopRow(l.group, {
       total: l.total, recipeId: r.id,
       note: [toBuy(l.group) ? '' : 'probably have', l.optional ? 'optional' : ''].filter(Boolean).join(', '),
     }));
@@ -2197,7 +2227,7 @@ function recipeView(b) {
   });
   if (b.manual.length) {
     out.push(`<section class="shop-recipe"><div class="shop-recipe-head"><h2>Added by you</h2></div>
-      <ul class="shop-list">${b.manual.map((it) => shopRow(it.group, { total: it.total, item: it.id })).join('')}</ul></section>`);
+      <ul class="shop-list">${lastIfChecked(b.manual).map((it) => shopRow(it.group, { total: it.total, item: it.id })).join('')}</ul></section>`);
   }
   return out.join('');
 }
@@ -2401,6 +2431,27 @@ function beep() {
     });
   } catch { /* no audio */ }
   try { navigator.vibrate?.([300, 150, 300, 150, 300]); } catch { /* ignore */ }
+}
+
+/** A soft click when an item goes in the basket (rising) or comes out (falling). */
+function tickSound(on) {
+  try {
+    // Ambient sound follows the phone's silent switch where the browser supports it.
+    if (navigator.audioSession) navigator.audioSession.type = 'ambient';
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audio, t = ctx.currentTime;
+    if (ctx.state === 'suspended') ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(on ? 660 : 990, t);
+    o.frequency.exponentialRampToValueAtTime(on ? 990 : 660, t + 0.08);
+    o.connect(g); g.connect(ctx.destination);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    o.start(t); o.stop(t + 0.16);
+  } catch { /* no audio */ }
+  try { navigator.vibrate?.(12); } catch { /* ignore */ }
 }
 
 // Phones (Android Chrome) only show notifications through the service worker.

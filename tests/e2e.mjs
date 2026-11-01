@@ -596,6 +596,15 @@ const newPage = async (opts = {}) => {
   await page.waitForSelector('.shop-recipe-head');
   ok(await page.locator('.shop-recipe-head h2').allTextContents().then((t) => t.includes('Crêpes (from Drive)') && t.includes('Added by you')), 'by recipe shows each recipe and your own items');
   ok((await page.textContent('.shop-recipe-head:has-text("Lasagna") > span')) === '4 servings', 'recipe shows its servings');
+  const lasagna = page.locator('.shop-recipe', { hasText: 'Lasagna' });
+  const first = (await lasagna.locator('.shop-row:not(.is-checked) .shop-name').first().textContent()).trim();
+  await lasagna.locator('.shop-row', { has: page.locator('.shop-name', { hasText: first }) }).first().locator('.tick').click();
+  ok(await page.isVisible('.shop-row.is-leaving'), 'a ticked row plays its way out first');
+  const lasagnaRows = () => lasagna.locator('.shop-row').evaluateAll((rs) => rs.map((r) => [r.querySelector('.shop-name').textContent.trim(), r.classList.contains('is-checked')]));
+  const after = (rs) => rs.findIndex(([n]) => n === first) > rs.findLastIndex(([, c]) => !c);
+  ok(await until(() => lasagnaRows().then(after), 'moved'), 'by recipe, a ticked line moves below the lines still to buy');
+  await lasagna.locator('.shop-row', { has: page.locator('.shop-name', { hasText: first }) }).first().locator('.tick').click();
+  ok(await until(() => lasagnaRows().then((rs) => rs[0][0] === first && !rs[0][1]), 'back'), 'and unticked it goes back to its place');
   await page.click('.shop-recipe-head:has-text("Crêpes") [data-remove-recipe]');
   ok(await until(() => listJson().recipes.length === 1, 'remove recipe'), 'removing a recipe keeps the others');
   ok(await row('milk').locator('.ing-qty').textContent() === '350 ml', 'only the lasagna milk is left');

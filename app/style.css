@@ -744,6 +744,15 @@ body.has-side .toast { max-width: min(520px, calc(100% - var(--side-w) - 32px));
 .side {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: var(--side-w);
   background: var(--card); border-left: 1px solid var(--line);
+/* A tick: the box pops, the line crosses out, then the row slides off to its new place. */
+.shop-row.is-leaving { animation: leave .55s ease-in forwards; pointer-events: none; }
+.shop-row.is-leaving .tick { animation: pop .25s ease-out; }
+.shop-row.is-leaving .ing-qty, .shop-row.is-leaving .shop-name { transition: opacity .2s, text-decoration-color .2s; }
+.shop-row.is-landed { animation: land .9s ease-out; }
+@keyframes leave { 0%, 45% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(24px); } }
+@keyframes pop { 50% { transform: scale(1.25); } }
+@keyframes land { 0% { opacity: 0; background: var(--line); } 30% { opacity: 1; background: var(--line); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .shop-row.is-leaving, .shop-row.is-leaving .tick, .shop-row.is-landed { animation: none; } }
   overflow-y: auto; overscroll-behavior: contain;
 }
 .rail {
