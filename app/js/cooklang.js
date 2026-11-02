@@ -1,7 +1,7 @@
 // Cooklang parsing (official WASM parser) plus the small helpers the app needs:
 // a fast frontmatter reader for the recipe index, duration parsing and
 // metric-friendly quantity formatting.
-import * as bg from './vendor/cooklang/cooklang_wasm_bg.js';
+import * as bg from '../vendor/cooklang/cooklang_wasm_bg.js';
 
 let parser = null;
 let loading = null;
@@ -10,7 +10,7 @@ export function initParser() {
   if (parser) return Promise.resolve();
   if (loading) return loading;
   loading = (async () => {
-    const url = new URL('./vendor/cooklang/cooklang_wasm_bg.wasm', import.meta.url);
+    const url = new URL('../vendor/cooklang/cooklang_wasm_bg.wasm', import.meta.url);
     const imports = { './cooklang_wasm_bg.js': bg };
     let instance;
     try {
@@ -91,8 +91,8 @@ export function parseDuration(v) {
   const s = String(v).toLowerCase().replace(/\s+/g, '');
   if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
   let total = 0, hit = false;
-  const d = s.match(/(\d+(?:\.\d+)?)d(?:ays?)?/); if (d) { total += d[1] * 1440; hit = true; }
-  const h = s.match(/(\d+(?:\.\d+)?)h(?:ours?|rs?)?/); if (h) { total += h[1] * 60; hit = true; }
+  const d = s.match(/(\d+(?:\.\d+)?)d(?:ays?)?/); if (d) { total += Number(d[1]) * 1440; hit = true; }
+  const h = s.match(/(\d+(?:\.\d+)?)h(?:ours?|rs?)?/); if (h) { total += Number(h[1]) * 60; hit = true; }
   const m = s.match(/(\d+(?:\.\d+)?)m(?:in(?:utes?|s)?)?(?![a-z])/); if (m) { total += Number(m[1]); hit = true; }
   return hit ? Math.round(total) : null;
 }
@@ -118,6 +118,7 @@ export function ingredientNames(src) {
 // ---------- quantities ----------
 
 const METRIC = new Set(['g', 'kg', 'mg', 'ml', 'l', 'cl', 'dl', 'cm', 'mm', 'm', '°c', 'c', '%']);
+/** @type {[number, string][]} */
 const FRACTIONS = [[1 / 8, '⅛'], [1 / 4, '¼'], [1 / 3, '⅓'], [3 / 8, '⅜'], [1 / 2, '½'], [5 / 8, '⅝'], [2 / 3, '⅔'], [3 / 4, '¾'], [7 / 8, '⅞']];
 
 function numOf(n) {

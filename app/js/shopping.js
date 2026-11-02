@@ -296,6 +296,8 @@ export function apply(list, op) {
  * `configFolder()` resolves to the id of the config folder; `onChange()` is
  * called whenever the list or the sync status changes. The meal plan syncs
  * the same way with its own `file`, `storeKey`, `clean` and `apply`.
+ * @param {{ drive: any, configFolder: () => Promise<string>, onChange: () => void,
+ *   file?: string, storeKey?: string, clean?: (raw: any) => any, apply?: (list: any, op: any) => any }} opts
  */
 export function createSync({ drive, configFolder, onChange, file = 'shopping_list.json', storeKey = STORE_KEY, clean = cleanList, apply: applyOp = apply }) {
   const saved = (() => { try { return JSON.parse(localStorage.getItem(storeKey) || 'null'); } catch { return null; } })() || {};

@@ -1,0 +1,94 @@
+/* The shopping list. */
+
+/* ---------- shopping list ---------- */
+.icon-link {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  color: var(--ink); text-decoration: none;
+}
+.icon-link:hover { background: var(--soft); }
+.icon-link svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.badge {
+  position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--strong); color: var(--on-strong); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+body[data-view="list"] .icon-link { background: var(--soft); }
+
+.shop { max-width: 720px; margin: 0 auto; }
+.shop-head { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 18px; }
+/* the full page steps back to the side panel; only wide screens have one */
+.icon-btn.shop-to-side { display: none; }
+@media (min-width: 1100px) {
+  .shop-head { position: relative; padding-right: 48px; }
+  .icon-btn.shop-to-side { display: grid; position: absolute; top: 0; right: 0; }
+}
+.shop-head h1 { margin: 0; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-size: clamp(36px, 6vw, 56px); }
+.shop-status { margin: 0; color: var(--muted); font-size: 14px; }
+.shop-status .link-btn { font-size: inherit; }
+.shop-add { display: flex; gap: 8px; }
+.shop-add input {
+  flex: 1; min-width: 0; min-height: 48px; border: 1px solid var(--line); border-radius: 999px; background: var(--card);
+  padding: 0 18px; font-size: 16px; outline: none;
+}
+.shop-add input:focus { border-color: var(--strong); }
+.shop-add .btn { min-height: 48px; }
+.shop-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 18px 0 6px; }
+.shop-count { color: var(--muted); font-size: 14px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; flex: none; background: var(--soft); border-radius: 999px; padding: 3px; }
+.seg button {
+  white-space: nowrap; border: 0; background: none; border-radius: 999px; padding: 7px 14px; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--muted);
+}
+.seg button[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); }
+
+.shop-sec, .shop-recipe { margin-top: 22px; }
+.shop-sec h2, .shop-have summary, .shop-recipe-head h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 2px; }
+.shop-sec h2 span, .shop-have summary span { font-weight: 400; margin-left: 4px; }
+.shop-have summary { cursor: pointer; padding: 6px 0; }
+.shop-recipe-head { display: flex; align-items: baseline; gap: 10px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.shop-recipe-head h2 { flex: 1; min-width: 0; font-size: 20px; text-transform: none; letter-spacing: -.01em; color: var(--ink); }
+.shop-recipe-head h2 a { text-decoration: none; }
+.shop-recipe-head h2 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.shop-recipe-head > span { color: var(--muted); font-size: 14px; white-space: nowrap; }
+.shop-recipe .muted { margin: 10px 0 0; }
+.shop-recipe-head { align-items: center; }
+.shop-recipe-head .pday-fold { margin-left: -6px; }
+.shop-recipe.is-folded > :not(.shop-recipe-head) { display: none; }
+.shop-parts { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.parts-list { list-style: none; margin: 0 0 20px; padding: 0; max-height: 52vh; overflow: auto; }
+.parts-list li + li { border-top: 1px solid var(--line); }
+.parts-list label { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; cursor: pointer; }
+.parts-list .tick { width: 22px; height: 22px; flex: none; transform: none; margin-top: 1px; }
+.parts-list b { display: block; font-weight: 600; }
+.parts-list small { display: block; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.modal .btn:disabled { cursor: default; }
+.shop-list { list-style: none; margin: 0; padding: 0; }
+.shop-row { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.shop-main {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: auto 92px minmax(0, 1fr); gap: 12px; align-items: center;
+  padding: 12px 0; cursor: pointer;
+}
+.shop-main .tick { width: 22px; height: 22px; transform: none; }
+.shop-name { font-size: 17px; line-height: 1.3; overflow-wrap: anywhere; }
+.shop-name small { display: block; font-size: 13px; color: var(--muted); }
+.shop-row.is-checked .ing-qty, .shop-row.is-checked .shop-name { opacity: .4; text-decoration: line-through; }
+.shop-row.is-have:not(.is-checked) .ing-qty, .shop-row.is-have:not(.is-checked) .shop-name { color: var(--muted); }
+.more-btn {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: none; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+}
+.more-btn:hover { background: var(--soft); color: var(--ink); }
+.more-btn svg { width: 20px; height: 20px; fill: currentColor; }
+.shop-empty { text-align: center; padding: 48px 0 24px; }
+.shop-empty p { margin: 0 0 6px; font-size: 17px; }
+.shop-clear { display: flex; width: 100%; margin-top: 36px; min-height: 52px; font-size: 16px; }
+
+.shop-row.is-new { animation: flash 2.5s ease-out; }
+@keyframes flash { 0%, 40% { background: var(--mark); } 100% { background: transparent; } }
+/* A tick: the box pops, the line crosses out, then the row slides off to its new place. */
+.shop-row.is-leaving { animation: leave .55s ease-in forwards; pointer-events: none; }
+.shop-row.is-leaving .tick { animation: pop .25s ease-out; }
+.shop-row.is-leaving .ing-qty, .shop-row.is-leaving .shop-name { transition: opacity .2s, text-decoration-color .2s; }
+.shop-row.is-landed { animation: land .9s ease-out; }
+@keyframes leave { 0%, 45% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(24px); } }
+@keyframes pop { 50% { transform: scale(1.25); } }
+@keyframes land { 0% { opacity: 0; background: var(--line); } 30% { opacity: 1; background: var(--line); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .shop-row.is-leaving, .shop-row.is-leaving .tick, .shop-row.is-landed { animation: none; } }

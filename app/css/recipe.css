@@ -1,0 +1,163 @@
+/* The recipe page: hero, actions, ingredients, the method with its
+   highlighter and timer pills, and the timer dock. */
+
+/* ---------- recipe ---------- */
+.crumbs { display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px; color: var(--muted); margin: 4px 0 18px; }
+.crumbs a { text-decoration: none; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; }
+
+.recipe-top { display: grid; gap: 28px; }
+.recipe-top.has-img { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; }
+.hero { margin: 0; border-radius: 14px; overflow: hidden; aspect-ratio: 4 / 3; background: var(--soft) center / cover no-repeat; }
+.hero img { width: 100%; height: 100%; object-fit: cover; }
+.recipe-head h1 {
+  margin: 0 0 12px; font-weight: 800; letter-spacing: -.03em; line-height: 1;
+  font-size: clamp(36px, 5.4vw, 64px); font-variation-settings: "opsz" 96;
+}
+.lede { font-family: var(--text); font-size: 21px; line-height: 1.45; margin: 0 0 20px; max-width: 34em; }
+.facts { display: flex; flex-wrap: wrap; gap: 14px 26px; margin: 0 0 16px; }
+.facts div { min-width: 0; }
+.facts dt { font-size: 13px; color: var(--muted); }
+.facts dd { margin: 0; font-weight: 600; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tags span { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+.source { font-size: 14px; color: var(--muted); margin: 0 0 18px; }
+.recipe-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.scaler {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--card); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px; min-height: 46px;
+}
+.scaler output { padding: 0 6px; min-width: 104px; text-align: center; }
+.scaler output b { font-size: 18px; }
+.scaler .link-btn { margin: 0 8px 0 2px; }
+.scaler-label { padding: 0 6px 0 10px; color: var(--muted); font-size: 14px; }
+.scaler .mult { border: 0; }
+.step-btn {
+  width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--soft); color: var(--strong);
+  font-size: 22px; line-height: 1; cursor: pointer; font-weight: 600;
+}
+.step-btn:disabled { opacity: .4; cursor: default; }
+/* Cook mode, shopping list and edit: round icons as tall as the servings pill */
+.recipe-actions .icon-btn { width: 48px; min-height: 48px; padding: 0; }
+/* the see-through ones can be a bit narrower, so share fits on one row beside a changed scale */
+.recipe-actions .btn-quiet.icon-btn { width: 42px; }
+/* the shared .icon-btn further down is see-through; cook mode stays the one black button */
+.recipe-actions .btn-primary, .recipe-actions .btn-primary:hover { background: var(--strong); color: var(--on-strong); }
+.icon-btn svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* Add to shopping list: the check or arrow in the basket's corner pokes out of the icon box */
+#add-list svg { overflow: visible; }
+#add-list .halo { stroke: var(--card); fill: var(--card); }
+/* ⋯ holds what is used less: share (signed in), print, photo, the editor */
+.recipe-more summary { display: grid; place-items: center; }
+.recipe-more .menu-pop { width: 200px; }
+.recipe-more .menu-pop.at-left { right: auto; left: 0; }
+/* phones: the servings on one line, the buttons together on the next */
+.row-break { display: none; }
+@media (max-width: 559px) { .row-break { display: block; flex-basis: 100%; height: 0; margin-top: -8px; } }
+.photo-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+
+.recipe-body {
+  display: grid; grid-template-columns: minmax(250px, 340px) minmax(0, 1fr); gap: 48px; margin-top: 44px; align-items: start;
+}
+.recipe-body h2 { font-size: 24px; letter-spacing: -.02em; margin: 0 0 14px; }
+.ing-list, .tool-list { list-style: none; margin: 0; padding: 0; }
+.ing-row {
+  display: grid; grid-template-columns: auto 92px minmax(0, 1fr); gap: 10px; align-items: baseline;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+}
+.ing-row:has(.tick) { cursor: default; }
+.preview-head + .recipe-body .ing-row, .pane-preview .ing-row { grid-template-columns: 92px minmax(0, 1fr); }
+.tick { width: 18px; height: 18px; accent-color: var(--strong); margin: 0; transform: translateY(3px); cursor: pointer; }
+.ing-qty { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ing-name a { color: var(--ink); text-underline-offset: 3px; }
+.ing-note { color: var(--muted); font-size: 14px; }
+.ing-row.is-checked .ing-qty, .ing-row.is-checked .ing-name { opacity: .4; text-decoration: line-through; }
+.tools-h { margin-top: 30px !important; }
+/* As written / By aisle beside the Ingredients heading */
+.ing-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.ing-head h2 { margin: 0 !important; }
+.ing-sort { margin: 0; }
+.ing-sort button { padding: 5px 12px; font-size: 13px; }
+.ing-sec { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 20px 0 0; }
+.ing-sec:first-child { margin-top: 4px; }
+.tool-list .tool-row { grid-template-columns: auto minmax(0, 1fr); }
+.tool-list .tool-row:not(:has(.tick)) { display: block; }
+
+.method { max-width: 44em; }
+.section-name { font-size: 19px; margin: 30px 0 10px; }
+.section-name:first-of-type { margin-top: 4px; }
+.steps { list-style: none; margin: 0; padding: 0; }
+.step {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 14px 0; cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+.step:last-child { border-bottom: 0; }
+.step-n { font-weight: 800; font-size: 22px; color: var(--muted); line-height: 1.3; }
+.step p { margin: 0; font-family: var(--text); font-size: 20px; line-height: 1.6; }
+.step.is-done p, .step.is-done .step-n { opacity: .38; }
+.note {
+  font-family: var(--text); font-style: italic; font-size: 18px; color: var(--muted); margin: 14px 0;
+  padding-left: 16px; border-left: 3px solid var(--line);
+}
+.cooked { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); font-size: 15px; color: var(--muted); }
+.cooked a { color: var(--ink); font-weight: 600; text-underline-offset: 3px; }
+
+/* the highlighter: ingredients marked inside the method */
+.mark {
+  font-family: var(--display); font-size: .86em; font-weight: 500; text-decoration: none; color: var(--ink);
+  background: var(--mark); border-radius: 3px;
+  padding: .05em .2em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.mark b { font-weight: 700; white-space: nowrap; }
+a.mark:hover { box-shadow: inset 0 -2px var(--accent); }
+/* tools stay in the text font, with a quiet dotted line that runs through the descenders */
+.tool {
+  text-decoration: underline dotted var(--dotted); text-decoration-thickness: 1.5px;
+  text-underline-offset: .12em; text-decoration-skip-ink: none;
+}
+.qty { font-weight: 600; }
+/* timers in the method: a quiet grey pill on the text baseline, the clock becomes a ring that empties while it runs */
+.timer-chip {
+  display: inline-block; font-family: var(--display); font-size: .82em; font-weight: 600;
+  border: 0; color: var(--ink); background: var(--soft); border-radius: 999px; padding: .16em .6em;
+  vertical-align: baseline; cursor: pointer; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+button.timer-chip { padding-left: .45em; }
+span.timer-chip { cursor: default; }
+button.timer-chip:hover { background: var(--line); }
+.timer-chip svg { width: 1em; height: 1em; vertical-align: -.14em; margin-right: .28em; fill: none; stroke-width: 2; }
+.tc-clock { stroke: var(--muted); stroke-linecap: round; }
+/* mirrored so the empty part sweeps clockwise from twelve, like a clock hand */
+.tc-ring { display: none; transform: rotate(-90deg) scaleY(-1); stroke-width: 3.2; }
+.tc-check { display: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.6; }
+.tc-track { stroke: var(--line); }
+.tc-left { stroke: var(--ink); stroke-linecap: round; }
+.timer-chip.is-running .tc-clock { display: none; }
+.timer-chip.is-running .tc-ring { display: inline; }
+.timer-chip.is-paused .tc-left { stroke: var(--muted); }
+.timer-chip.is-done .tc-ring { display: none; }
+.timer-chip.is-done .tc-check { display: inline; stroke: currentColor; }
+.timer-chip.is-done, button.timer-chip.is-done:hover { background: var(--accent); color: var(--on-accent); }
+
+/* ---------- timers ---------- */
+.timers {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30;
+  display: flex; flex-direction: column; gap: 8px; width: min(440px, calc(100% - 32px));
+}
+.timer {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px;
+  background: var(--ink); color: var(--paper); box-shadow: var(--shadow);
+}
+.timer-btn {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer;
+  background: color-mix(in srgb, currentColor 14%, transparent); color: inherit;
+}
+.timer-btn:hover { background: color-mix(in srgb, currentColor 24%, transparent); }
+.timer-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.timer-btn .fill { fill: currentColor; stroke: none; }
+.timer { gap: 10px; }
+.timer-label { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; display: flex; flex-direction: column; }
+.timer-label small { font-weight: 400; opacity: .7; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timer-clock { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.timer.is-done { background: var(--accent); color: var(--on-accent); animation: pulse 1s ease-in-out 3; }
+@keyframes pulse { 50% { transform: scale(1.03); } }

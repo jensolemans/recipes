@@ -1,0 +1,171 @@
+/* Toast, modal, share, New and Edit (Ask Claude or the editor) and the
+   shopping item card. */
+
+/* ---------- toast + modal ---------- */
+.toast {
+  position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translate(-50%, -140%); z-index: 40;
+  background: var(--ink); color: var(--paper); padding: 6px 6px 6px 18px; border-radius: 14px;
+  width: min(640px, calc(100% - 24px)); min-height: 56px;
+  font-size: 15px; line-height: 1.4; box-shadow: var(--shadow); transition: transform .25s ease, visibility .25s;
+  visibility: hidden;
+}
+.toast.is-on { transform: translate(-50%, 0); visibility: visible; }
+.modal {
+  border: 0; border-radius: 16px; padding: 24px; max-width: min(440px, calc(100% - 32px));
+  background: var(--card); color: var(--ink); box-shadow: var(--shadow);
+}
+.modal::backdrop { background: rgba(10, 16, 13, .45); }
+.modal h2 { margin: 0 0 8px; font-size: 22px; letter-spacing: -.02em; }
+.modal p { margin: 0 0 20px; color: var(--muted); }
+.modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+.toast { display: flex; align-items: center; gap: 6px; }
+.toast-msg { flex: 1; min-width: 0; padding: 8px 6px 8px 0; }
+.toast-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px 0 11px;
+  border: 0; border-radius: 999px; background: var(--paper); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer;
+}
+.toast-x {
+  flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: none; color: inherit; cursor: pointer; opacity: .75;
+}
+.toast-btn:hover { opacity: .88; }
+.toast-x:hover { opacity: 1; background: color-mix(in srgb, var(--paper) 14%, transparent); }
+.toast-btn svg, .toast-x svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.toast-x svg { width: 20px; height: 20px; }
+.modal-field { margin: 0 0 20px; }
+.modal-field select, .modal-field input { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); padding: 0 12px; }
+.modal-field input:focus { outline: none; border-color: var(--strong); }
+
+/* ---------- share ---------- */
+/* Phones: a bottom sheet with three rows. Bigger screens: a card in the middle
+   with a big QR code, the black Copy link and the text options quietly below. */
+body:has(.share[open]) { overflow: hidden; }
+.share {
+  margin: auto 0 0; width: 100%; max-width: none; padding: 0 0 calc(8px + env(safe-area-inset-bottom));
+  border: 0; border-radius: 20px 20px 0 0; background: var(--card); color: var(--ink);
+}
+.share[open] { animation: sheet-up .22s ease-out; }
+.share::backdrop { background: rgba(10, 16, 13, .45); }
+.share svg:not(.qr) { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.share-head { display: flex; align-items: center; gap: 12px; padding: 10px 8px 12px 16px; }
+.share-head img { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; flex: none; }
+.share-head div { flex: 1; min-width: 0; }
+.share-head b { display: block; font-size: 17px; line-height: 1.25; }
+.share-head small { color: var(--muted); font-size: 14px; }
+.share-row {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 56px; padding: 0 16px;
+  border: 0; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; font-size: 16px; font-weight: 600;
+  text-align: left; cursor: pointer;
+}
+.share-row:active { background: var(--soft); }
+.share.is-wide {
+  margin: auto; width: min(400px, calc(100vw - 32px)); padding: 28px; border-radius: 18px;
+  box-shadow: var(--shadow); text-align: center;
+}
+.share.is-wide[open] { animation: sheet-in .16s ease-out; }
+.share-x { position: absolute; top: 10px; right: 10px; color: var(--ink); }
+.share-title { margin: 0 28px 6px; font-size: 24px; line-height: 1.15; letter-spacing: -.02em; }
+.share-sub { margin: 0 0 18px; color: var(--muted); font-size: 15px; }
+.share-qr { width: 280px; max-width: 100%; margin: 0 auto 20px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+.qr { display: block; width: 100%; height: auto; }
+.share-main { width: 100%; min-height: 48px; gap: 8px; font-size: 16px; }
+.share-more { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 20px; margin-top: 14px; }
+.share-quiet {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 2px; border: 0; background: none;
+  color: var(--muted); font: inherit; font-size: 14px; cursor: pointer;
+}
+.share-quiet:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.share .share-quiet svg { width: 18px; height: 18px; }
+
+/* ---------- new and edit: Ask Claude or the editor ---------- */
+/* Phones: a bottom sheet like Share. Bigger screens: a small menu by the button. */
+body:has(.choose[open]:not(.is-pop)) { overflow: hidden; }
+.choose {
+  margin: auto 0 0; width: 100%; max-width: none; padding: 0;
+  border: 0; border-radius: 20px 20px 0 0; background: var(--card); color: var(--ink);
+}
+.choose[open] { animation: sheet-up .22s ease-out; }
+.choose::backdrop { background: rgba(10, 16, 13, .45); }
+.choose-in { display: grid; gap: 8px; padding: 0 16px calc(16px + env(safe-area-inset-bottom)); }
+.choose-head { display: flex; align-items: flex-start; gap: 12px; margin: 2px -8px 4px 0; }
+.choose-head div { flex: 1; min-width: 0; padding-top: 8px; }
+.choose-head b { display: block; font-size: 17px; line-height: 1.25; }
+.choose-head small { color: var(--muted); font-size: 14px; }
+.choose svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.choose-opt {
+  display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--line);
+  border-radius: 12px; color: inherit; text-decoration: none; background: var(--card);
+}
+button.choose-opt { width: 100%; font: inherit; text-align: left; cursor: pointer; }
+.choose-opt b { display: block; font-size: 16px; line-height: 1.3; }
+.choose-opt small { display: block; color: var(--muted); font-size: 14px; line-height: 1.4; margin-top: 2px; }
+a.choose-opt:hover { border-color: var(--muted); }
+.choose-opt.is-main { background: var(--strong); border-color: var(--strong); color: var(--on-strong); }
+.choose-opt.is-main small { color: inherit; opacity: .75; }
+.choose-opt.is-main:hover { opacity: .9; }
+.choose-opt.is-off { border-style: dashed; background: none; color: var(--muted); }
+.choose.is-pop {
+  position: fixed; margin: 0; width: 300px; border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.choose.is-pop[open] { animation: sheet-in .12s ease-out; }
+.choose.is-pop::backdrop { background: transparent; }
+.choose.is-pop .choose-in { padding: 8px; gap: 6px; }
+.choose.is-pop .choose-opt { padding: 12px; }
+.choose.is-pop .choose-opt:not(.is-main) { border-color: transparent; }
+.choose.is-pop a.choose-opt:not(.is-main):hover { background: var(--soft); }
+.choose.is-pop .choose-opt b { font-size: 15px; }
+.choose.is-pop .choose-opt small { font-size: 13px; }
+
+/* ---------- shopping item card ---------- */
+/* What is behind an item's ... button. Phones: a bottom sheet, in thumb reach.
+   Bigger screens: a card in the middle. Same rows in both. */
+body:has(.item[open]) { overflow: hidden; }
+.item {
+  margin: auto 0 0; width: 100%; max-width: none; padding: 0 20px calc(16px + env(safe-area-inset-bottom));
+  border: 0; border-radius: 20px 20px 0 0; background: var(--card); color: var(--ink);
+}
+.item[open] { animation: sheet-up .22s ease-out; }
+.item::backdrop { background: rgba(10, 16, 13, .45); }
+.item.is-wide { margin: auto; width: min(400px, calc(100vw - 32px)); padding: 24px; border-radius: 18px; box-shadow: var(--shadow); }
+.item.is-wide[open] { animation: sheet-in .16s ease-out; }
+.item.is-wide .sheet-grab { display: none; }
+.item .sheet-grab { margin: 8px auto 12px; }
+.item svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.item-x { position: absolute; top: 18px; right: 12px; color: var(--ink); }
+.item.is-wide .item-x { top: 14px; }
+.item-x svg { width: 22px; height: 22px; }
+.item h2 { margin: 0 44px 14px 0; font-size: 28px; font-weight: 800; line-height: 1.08; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.item-uses { list-style: none; margin: 0 0 16px; padding: 0; }
+.item-uses li { display: flex; gap: 10px; padding: 3px 0; font-size: 16px; line-height: 1.4; }
+.item-uses li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; margin-top: .6em; flex: none; }
+.item-uses b { min-width: 58px; font-weight: 700; }
+.item-uses b:empty { display: none; }
+.item-uses .is-you { color: var(--muted); }
+.item-uses a { color: inherit; text-decoration: none; }
+.item-uses a:hover { text-decoration: underline; }
+.item-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.item-uses .item-step {
+  padding: 3px 10px; border-radius: 999px; background: var(--soft); font-size: 14px; font-weight: 600; text-decoration: none;
+}
+.item-uses .item-step:hover { background: var(--line); text-decoration: none; }
+.item-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 54px; padding: 0;
+  border: 0; border-top: 1px solid var(--line); background: none; color: inherit; font: inherit; font-size: 16px; text-align: left;
+}
+button.item-row { cursor: pointer; }
+.item-row > span:first-child { color: var(--muted); }
+.item-val { display: flex; align-items: center; gap: 4px; font-weight: 600; }
+.item-val svg { color: var(--muted); }
+.item-add { background: var(--soft); color: var(--ink); }
+.item-add:hover { border-color: var(--line); }
+.switch { position: relative; width: 44px; height: 26px; border-radius: 999px; background: var(--line); flex: none; transition: background .15s; }
+.switch::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--muted); transition: transform .15s, background .15s;
+}
+[aria-checked="true"] > .switch { background: var(--strong); }
+[aria-checked="true"] > .switch::after { transform: translateX(18px); background: var(--on-strong); }
+.item-remove { width: 100%; min-height: 48px; margin-top: 12px; border-color: var(--danger); color: var(--danger); font-size: 16px; }
+.item-remove:hover { background: var(--danger); color: var(--card); }

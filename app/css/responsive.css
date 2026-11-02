@@ -1,0 +1,41 @@
+/* Last, so it wins: very wide desktops, small phones, reduced motion.
+   Area rules for one width live with their area. */
+
+/* ---------- responsive ---------- */
+/* Wide desktops: the page grows with the screen up to 1480 px. */
+@media (min-width: 1400px) {
+  main, .topbar { max-width: clamp(1180px, calc((100vw - var(--side-w, 0px)) * .88), 1480px); padding-left: 32px; padding-right: 32px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .recipe-body { grid-template-columns: minmax(280px, 400px) minmax(0, 1fr); gap: 64px; }
+  .method { max-width: 48em; }
+  /* Centre on the whole window: the scrollbar gets a matching gap on the left,
+     and the closed shopping list rail sits in the margin instead of pushing the page. */
+  html { scrollbar-gutter: stable both-edges; }
+  body.has-side:not(.side-open) { padding-right: 0; }
+  body.has-side:not(.side-open)[data-view="home"] .topbar { right: 0; }
+  body.has-side:not(.side-open) .toast, body.has-side:not(.side-open) .timers { left: 50%; }
+}
+@media (max-width: 900px) {
+  .recipe-top.has-img { grid-template-columns: 1fr; }
+  .hero { margin: 0 -16px; border-radius: 0; aspect-ratio: 3 / 2; }
+  .recipe-body { grid-template-columns: 1fr; gap: 36px; margin-top: 32px; }
+}
+@media (max-width: 560px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 12px; }
+  .card-title { font-size: 16px; }
+  .card-facts { font-size: 13px; gap: 8px; }
+  .ing-row { grid-template-columns: auto 78px minmax(0, 1fr); }
+  .btn-new { width: 36px; padding: 0; }
+  .btn-new svg { margin: 0; width: 18px; height: 18px; }
+  .btn-new span { display: none; }
+  .top-right { flex: none; }
+  .shop-main { grid-template-columns: auto 72px minmax(0, 1fr); gap: 10px; }
+  .shop-count { margin-left: 0; }
+  .shop-bar .link-btn { margin-left: auto; }
+  .step { grid-template-columns: 30px minmax(0, 1fr); }
+  .step p { font-size: 19px; }
+  .lede { font-size: 19px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}

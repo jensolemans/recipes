@@ -1,0 +1,76 @@
+/* The side panel (wide screens, signed in) and the tab bar (narrow
+   screens, signed in). */
+
+/* ---------- side panel (wide screens, signed in) ---------- */
+body.has-side { --side-w: 44px; padding-right: var(--side-w); }
+body.side-open { --side-w: 340px; }
+body.has-side .account .icon-link { display: none; }
+body.has-side .toast, body.has-side .timers { left: calc(50% - var(--side-w) / 2); }
+body.has-side .toast { width: min(640px, calc(100% - var(--side-w) - 32px)); }
+.side {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 15; width: var(--side-w);
+  background: var(--card); border-left: 1px solid var(--line);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* closed: a slim rail with the plan above the list, each one button */
+.rail { height: 100%; display: flex; flex-direction: column; }
+.rail-top { display: grid; place-items: center; padding: 14px 0 4px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.rail-top:hover { color: var(--ink); }
+.rail-btn {
+  border: 0; background: none; cursor: pointer; color: var(--ink); padding: 14px 0 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+/* each button only as tall as its content, a line below it; the rest of the rail stays empty */
+.rail-btn { border-bottom: 1px solid var(--line); }
+.rail-btn:hover { background: var(--soft); }
+.rail-btn.is-over { background: var(--mark); }
+.rail svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; flex: none; }
+.rail-top svg { width: 20px; height: 20px; transform: scaleX(-1); }
+.rail .badge { position: static; }
+.rail-label { writing-mode: vertical-rl; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.shop-panel { padding: 14px 16px 24px; }
+.side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.side-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.side-head .shop-count { margin: 0 0 0 6px; }
+/* full screen, then the panel toggle, on the right */
+.side-head > a.icon-btn { margin-left: auto; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 50%; border: 0; background: none; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+}
+.icon-btn:hover { background: var(--soft); color: var(--ink); }
+.icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.shop-panel .shop-status { margin-bottom: 12px; font-size: 13px; }
+.shop-panel .shop-add input, .shop-panel .shop-add .btn { min-height: 40px; }
+.shop-panel .shop-add .btn { padding: 0 14px; }
+.shop-panel .shop-bar { margin-top: 12px; }
+.shop-panel .shop-bar .link-btn { margin-left: auto; }
+.shop-panel .seg button { padding: 6px 11px; font-size: 13px; }
+.shop-panel .shop-sec, .shop-panel .shop-recipe { margin-top: 18px; }
+.shop-panel .shop-main { grid-template-columns: auto 64px minmax(0, 1fr); gap: 10px; padding: 9px 0; }
+.shop-panel .shop-name { font-size: 15px; }
+.shop-panel .shop-recipe-head h2 { font-size: 16px; }
+.shop-panel .more-btn { width: 32px; height: 32px; }
+.shop-panel .shop-empty { padding: 32px 0 8px; }
+.shop-panel .shop-empty p { font-size: 15px; }
+.shop-panel .shop-clear { margin-top: 24px; min-height: 44px; font-size: 14px; }
+
+
+/* ---------- tab bar (narrow screens, signed in) ---------- */
+body.has-tabbar { --tabbar-h: calc(61px + env(safe-area-inset-bottom)); padding-bottom: var(--tabbar-h); }
+body.has-tabbar .account .icon-link, body.has-tabbar .btn-new { display: none; }
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 16; display: flex;
+  background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+}
+.tab {
+  flex: 1; min-height: 60px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
+}
+.tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab[aria-current="page"] { color: var(--ink); }
+.tab[aria-current="page"]::before {
+  content: ""; position: absolute; top: -1px; left: 50%; width: 32px; margin-left: -16px; height: 3px; border-radius: 0 0 2px 2px; background: var(--accent);
+}
+.tab .badge { top: 5px; right: auto; left: calc(50% + 6px); }
+body.has-tabbar .timers { bottom: calc(var(--tabbar-h) + 12px); }

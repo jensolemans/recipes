@@ -379,6 +379,7 @@ export async function createFolder(name, parentId) {
 }
 
 /** Rename and/or move a file. */
+/** @param {string} id @param {{ name?: string, fromParent?: string, toParent?: string }} to */
 export async function moveRename(id, { name, fromParent, toParent }) {
   const params = new URLSearchParams({ fields: FILE_FIELDS });
   if (toParent && fromParent && toParent !== fromParent) { params.set('addParents', toParent); params.set('removeParents', fromParent); }
