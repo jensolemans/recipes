@@ -1,126 +1,30 @@
 # Recipe site
 
 Jens's Cooklang recipe collection as a website on GitHub Pages
-(https://jensolemans.github.io/recipes/). Friends browse, filter and scale
-recipes read-only; Jens signs in with Google to add, edit, move and delete
-recipes, which writes straight to the Google Drive folder "Cooklang Recipes".
-That Drive folder is the only database. The Cooklang phone app and desktop
-folders use the same files.
+(https://jensolemans.github.io/recipes/). Friends browse read-only; Jens
+signs in with Google to edit, which writes straight to the Google Drive
+folder "Cooklang Recipes", the only database.
 
-## How it fits together
+**How each part works is in `docs/ARCHITECTURE.md`.** Read the section for
+the part you change; keep it up to date in the same commit.
 
-- `app/` is the whole website: plain HTML, CSS and ES modules, no build step,
-  no framework, no npm dependencies at runtime.
-  - `app.js`: routing (`#/`, `#/r/<path>`, `#/edit/<path>`, `#/new`), home with
-    search and a folder button that says where you are and opens one panel
-    with the Drive folders (a path on top to go back up; one level at a time
-    on phones, each folder with its subfolders on bigger screens) and the filters:
-    a bottom sheet with two tabs on phones, a wide panel with both side by
-    side on bigger screens, recipe view with scaling and timers,
-    cook mode (`#/cook/<path>`), editor.
-  - New and Edit ask how (a bottom sheet on phones, a small menu by the
-    button on bigger screens): Ask Claude is a `claude.ai/new?q=` link with
-    the start of the request typed in (the folder being browsed, or the
-    recipe's path); Claude writes with the cooklang-recipe skill and saves
-    through the connector. Start blank / Edit the file opens the editor.
-    Offline, or when the connector does not answer, the editor comes first
-    and Ask Claude says why it is out; without `authUrl` they open the editor
-    straight away. The recipe's ⋯ menu has Share, Print and Change photo. The
-    editor keeps unsaved work as a draft on the device.
-  - Cook mode: the recipe page's chef hat button opens it. Step 0 is the mise
-    en place (servings, ingredients and tools as ticks, shared with the
-    recipe page), then one step at a time (swipe or buttons, arrow keys) or
-    all steps in one column; the pick and "keep the screen on" (Wake Lock)
-    are saved per device. The bar at the bottom has a pill per step, grouped
-    and labelled by `== Section ==` chapters. From 900 px a list beside the
-    step ticks off what is behind you. `s`, `x` and `step` stay in the link.
-  - `cooklang.js`: loads the official Cooklang WASM parser from
-    `app/vendor/cooklang/` (@cooklang/cooklang 0.19.1) and formats quantities.
-    The parser runs with `load_units = false` so units stay exactly as written
-    (no conversion to cups). Scaling is `parser.parse(src, factor)`, which
-    respects fixed quantities like `@salt{=1%tsp}`.
-  - Share: the recipe page's share button opens a bottom sheet on phones
-    (share link, copy ingredients, share the whole recipe as plain text)
-    and a centred card with a QR code on bigger screens. The link carries
-    the scale, so all of it opens at the current servings. `qr.js` is a
-    small hand-written QR code maker (byte mode, level M).
-  - `drive.js`: Google sign-in (Google Identity Services token flow, scope
-    `drive`) and Drive REST calls. Runs in the browser with the user's token.
-  - `shopping.js`: the signed-in shopping list (`#/list`). Stored in Drive as
-    `config/shopping_list.json` (recipes with their scale and chosen parts, i.e.
-    `== Section ==` headings, own items, checked
-    and removed lines); the list itself is worked out from that with
-    `config/aisle.conf` (store order, spellings) and `config/pantry.conf`
-    ("Probably have"). Changes queue in localStorage and replay on top of the
-    newest Drive version, so offline ticks and two devices both work. The list
-    page checks Drive every 15 s and when the tab comes back. From 1100 px
-    wide the list also sits on the right as a side panel (`#side`): a rail
-    when closed, open or closed remembered per device, L toggles it, the
-    editor keeps it a rail and the list page hides it. Narrower than that,
-    signed in, a bottom tab bar (`#tabbar`: Recipes, Shopping list, New)
-    takes its place, with Add to shopping list pinned above it on recipes.
-  - `plan.js`: the signed-in meal plan, stored in Drive as `config/plan.json`
-    and synced with the same engine as the list (`createSync` in shopping.js).
-    Two parts: Saved (to make some time, a recipe page's bookmark, never
-    shopped) and the calendar (recipes, meals without a recipe, ingredients,
-    notes per day and meal; shopping buys the calendar). Days run from today
-    to 3 ahead or the last planned day. `servings: null` follows "Cooking
-    for" (a chip's bubble is filled when it does not); bought or cooked meals
-    keep their size when it changes. "Also eat on" puts a recipe on more days
-    as one `batch`, cooked once on its first day unless `each`. A meal counts
-    as cooked only from cook mode's Finish or Done; a past day with an
-    unticked recipe stays in view with a warning. Plan entries on the
-    shopping list are linked by `planIds` on the list recipe. It shows in the
-    side panel (calendar and basket toggle, P and L), at `#/plan` (a week on
-    wide screens; Saved over the calendar on phones) and as Today on the home
-    page. Chips drag onto Saved, a meal, or the bin that shows at the bottom
-    (hold to drag on phones). On phones the tab bar is Recipes, Plan, List,
-    New, and holding a recipe card opens where it goes.
-  - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
-    that opens without a connection. The service worker serves the site from
-    its cache and refreshes it in the background (network first on
-    localhost). build.py stamps `CACHE` in `sw.js` with a fingerprint of the
-    site files, so each release installs as a whole and open pages offer a
-    reload; add new site files to `SITE` in `sw.js`. build.py also names the
-    app after the site title.
-  - `fonts/`: self-hosted Bricolage Grotesque (UI, headings) and Newsreader
-    (method text, descriptions).
-- `scripts/build.py RECIPES APP OUT`: copies `app/` to OUT and writes
-  `data/recipes.json` (path, source, md5, mtime, photo id per recipe, plus the
-  site config and `config/aisle.conf`, so friends can sort a recipe's
-  ingredients "By aisle" on the recipe page and in the mise en place too) and resized photos in `img/` and `thumb/`. The md5 equals
-  Drive's md5Checksum, so the signed-in app only downloads files that changed
-  since the last build.
-- `scripts/dev.py`: local preview at http://localhost:8000. Serves `app/` live
-  and rebuilds the data from the synced Drive folder when recipes change.
-  Settings in `local.json` (gitignored). Started by the desktop app's Browser
-  pane through `.claude/launch.json`.
-- `.claude/skills/import-recipe/`: the `/import-recipe` command for Claude
-  Code on the laptop. Takes a link, pasted text or a cookbook photo, converts
-  it with Jens's `cooklang-recipe` skill, saves the `.cook` file in the right
-  folder of the synced Drive folder, adds the dish photo with
-  `scripts/fetch_photo.py` and runs `tools/cooklint.py`. In the site's editor,
-  pasting Claude's whole reply keeps only the recipe, the category follows
-  the course and tags, and Paste photo / Photo link add the photo.
-- `.github/workflows/publish.yml`: hourly (and on push to main) downloads the
-  recipes with rclone (service account, read only), runs build.py and deploys
-  to GitHub Pages. Repo variables: `GDRIVE_FOLDER_ID`, `GOOGLE_CLIENT_ID`,
-  `SITE_TITLE`; secret: `GDRIVE_SERVICE_ACCOUNT`.
-- `connector/`: a Cloudflare Worker (free plan, its own `package.json` with
-  wrangler; the site itself stays dependency-free). Keeps the site signed in
-  to Google: sign in once per device, the Worker holds Google's refresh token
-  (encrypted in KV) and trades the device's pass for one-hour tokens. The site
-  uses it when `authUrl` is set (repo variable `AUTH_URL`), else the one-hour
-  token flow. It is also the recipes connector for Claude (MCP at `/mcp`,
-  `src/mcp.js`): Claude connects with OAuth (an Allow page, then Google;
-  only Jens and accounts the Drive folder is shared with as editors, only Claude's addresses) and gets list_folders,
-  find_recipes, read_recipe, save_recipe (in place, refused when the version
-  changed or the house style fails: `src/lint.js` ports cooklint and reads
-  its word lists from `tools/cooklint.py`), move_recipe and set_photo
-  (`src/photo.js`, as fetch_photo.py, resized by the Images binding). Setup in
-  `connector/README.md`.
-- `tests/e2e.mjs`: Playwright tests against a running site, with an in-memory
-  fake of the Google Drive API for the editor.
+## Map
+
+- `app/index.html`: the one page. `app/css/`: styles, one file per part.
+- `app/js/`: ES modules, no build step, no framework, no runtime
+  dependencies. `app.js` boots and routes; each module opens with a comment
+  saying what it holds; the table is in `docs/ARCHITECTURE.md`. Editor, cook
+  mode, share and the plan view load on first use (`lazy.js`).
+- `app/sw.js`: offline copy; build.py fills in its file list.
+- `scripts/build.py`: app + Drive folder → published site.
+  `scripts/dev.py`: local preview.
+- `connector/`: Cloudflare Worker: keeps the site signed in, and is Claude's
+  recipes connector (MCP).
+- `tests/`: browser tests per area on `tests/fixtures/recipes/`.
+- `.github/workflows/`: `test.yml` (branches, PRs), `publish.yml` (tests,
+  then hourly build and deploy).
+- `ROADMAP.md`: features still to build, in order. `ISSUES.md`: Jens's own
+  list of bugs and annoyances.
 
 ## Working on it
 
@@ -130,20 +34,23 @@ folders use the same files.
   No full screenshot pass and no tests after each change.
 - When Jens is happy and wants to commit: one full check on desktop and phone
   width (390 px), light and dark mode, then run the tests, then commit.
-- Tests: with the preview running,
-  `node tests/e2e.mjs http://localhost:8000 "<recipesDir from local.json>"`
-  (needs `npm i -g playwright` once). They must pass before every commit.
+- Tests: `node tests/run.mjs` (or one area: `node tests/run.mjs list`). It
+  starts its own server on the fixture recipes. Needs `npm i -g playwright`
+  once. Type check: `tsc -p jsconfig.json` (needs `npm i -g typescript`).
+  Both must pass before every commit; CI runs them too.
 - Never write to the real Drive folder while testing; the tests use the fake.
 - Connector (`connector/`): run `npm test` there before every
   `npx wrangler deploy`. Deploying changes what Claude sees at once, so do it
   only when the tests pass.
-- `ROADMAP.md` lists the features still to build, in order. Tick an item off
-  in the same commit that ships it.
-- `ISSUES.md` is Jens's own list of bugs and annoyances to fix later. Jens
-  edits it by hand; only change it when asked, or to tick off an issue in
-  the commit that fixes it.
-- Pushing to `main` publishes the site within about a minute. Do larger
-  changes on a branch first.
+- Tick a `ROADMAP.md` item off in the same commit that ships it.
+- `ISSUES.md`: Jens edits it by hand; only change it when asked, or to tick
+  off an issue in the commit that fixes it.
+- Pushing to `main` publishes the site within about a minute (after the
+  tests pass). Do changes on a branch first.
+- A new file in `app/` is picked up offline by itself. A new module that is
+  not a lazy view is imported by whatever uses it.
+- If you change the inline theme script in `index.html`, update its hash in
+  the Content Security Policy above it.
 
 ## Conventions
 
@@ -158,6 +65,6 @@ folders use the same files.
   rings and a finished timer. Running timers stay black, white and grey: a grey pill with a clock in
   the method, whose clock becomes a ring that empties while it runs. Buttons and selected chips are
   black (white in dark). Keep it that way unless asked; colours are CSS variables in
-  `app/style.css`. The top bar toggle switches light and dark; it starts from
+  `app/css/base.css`. The top bar toggle switches light and dark; it starts from
   the device setting (dark when there is none) and a pick is saved per device.
 - Keep the site dependency-free and static so it stays free to host.

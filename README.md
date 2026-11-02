@@ -13,7 +13,7 @@ The whole thing was vibe coded with [Claude Code](https://claude.com/claude-code
 - **Cook** from them. Scale any recipe to the number of servings you need, see each step with its ingredients highlighted, and start timers straight from the method.
 - **Edit** them. Signed in with Google, I add, edit, move, rename and delete recipes and photos right on the site, from any device. Changes land in Drive straight away.
 - **Shop** for them. Add recipes (scaled, or just some parts of them) to a shopping list. It merges the ingredients, sorts them in the order of my store's aisles, sets aside what I probably have in the pantry, and syncs between my phone and laptop, also when I tick things off offline.
-- **Import** them. With the `/import-recipe` command in Claude Code, I give Claude a link, some pasted text or a photo of a cookbook page, and it becomes a clean Cooklang recipe with a photo in the right folder. Or I paste Claude's reply into the site's editor.
+- **Import** them. I give Claude (on my phone, the web, or `/import-recipe` in Claude Code) a link, some pasted text or a photo of a cookbook page, and through the recipes connector it becomes a clean Cooklang recipe with a photo in the right folder. Or I paste Claude's reply into the site's editor.
 
 ## How it is built
 
@@ -34,18 +34,23 @@ Deleting moves the recipe and its photo to the Google Drive trash, so you can re
 ## Files
 
 ```
-app/                     the website (HTML, CSS, JavaScript)
-app/shopping.js          the shopping list
+app/index.html           the page
+app/js/                  the JavaScript, one module per part (app.js starts it all)
+app/css/                 the styles, one file per part
 app/sw.js                offline support and the installable app
 app/vendor/cooklang/     official Cooklang parser (@cooklang/cooklang 0.19.1, MIT)
 app/fonts/               Bricolage Grotesque and Newsreader (SIL Open Font License)
 scripts/build.py         turns the Drive download into the site's data and photos
 scripts/dev.py           local preview at http://localhost:8000 from your synced Drive folder
-tests/e2e.mjs            browser tests, run against a fake Google Drive
+connector/               the Cloudflare Worker: stays signed in, and Claude's recipes connector
+tests/                   browser tests per area, on a few fixture recipes and a fake Google Drive
+docs/ARCHITECTURE.md     how it all fits together
 CLAUDE.md                project notes for Claude Code
+jsconfig.json            the type check
 .claude/skills/import-recipe/   the /import-recipe command
 .claude/launch.json      lets the Claude desktop app start the preview
-.github/workflows/publish.yml   hourly download, build and publish
+.github/workflows/test.yml      tests on every branch and pull request
+.github/workflows/publish.yml   tests, then the hourly download, build and publish
 ```
 
 ## One-time setup
