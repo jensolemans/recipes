@@ -1,7 +1,7 @@
 # local preview
 .dev/
 local.json
-site/
-recipes/
+/site/
+/recipes/
 __pycache__/
 node_modules/

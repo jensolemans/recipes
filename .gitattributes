@@ -1,0 +1,6 @@
+# LF everywhere, on every machine, so diffs and exact-match edits stay clean.
+* text=auto eol=lf
+*.wasm binary
+*.woff2 binary
+*.png binary
+*.jpg binary
