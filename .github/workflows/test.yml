@@ -1,0 +1,50 @@
+name: Test
+
+# The browser tests on the fixture recipes, the connector tests and the
+# type check. Runs on every branch and pull request, and publish.yml runs it
+# before a push to main goes live.
+
+on:
+  push:
+    branches-ignore: [main] # main runs it through publish.yml
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install Pillow, Playwright and TypeScript
+        run: |
+          pip install --quiet pillow
+          npm install --global playwright@1 typescript@5
+          npx playwright install --with-deps chromium
+      - name: Type check
+        run: tsc -p jsconfig.json
+      - name: Browser tests
+        run: node tests/run.mjs
+
+  connector:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: connector
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: connector/package-lock.json
+      - run: npm ci
+      - run: npm test

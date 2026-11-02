@@ -2,6 +2,11 @@ name: Publish recipes
 
 # Downloads the Cooklang recipes from Google Drive, builds the recipe site
 # (app/ + data) and publishes it to GitHub Pages.
+#
+# A push to main runs the tests first and only goes live when they pass.
+# The hourly run keeps the recipes and resized photos from the last run, so
+# it only downloads and resizes what changed, and it publishes nothing when
+# nothing changed.
 
 on:
   schedule:
@@ -19,10 +24,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: test
+    # Runs when the tests passed, or when there were none to run (the hourly update).
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      changed: ${{ steps.changed.outputs.changed }}
     steps:
       - uses: actions/checkout@v5
 
@@ -32,6 +48,15 @@ jobs:
           sudo apt-get install -y -qq rclone
           pip install --quiet pillow
 
+      # The recipes and photos as of the last run: rclone then only fetches
+      # what changed in Drive since.
+      - name: Restore the last download
+        uses: actions/cache/restore@v4
+        with:
+          path: recipes
+          key: recipes-
+          restore-keys: recipes-
+
       - name: Download recipes from Google Drive
         env:
           RCLONE_CONFIG_GDRIVE_TYPE: drive
@@ -39,11 +64,30 @@ jobs:
           RCLONE_CONFIG_GDRIVE_SERVICE_ACCOUNT_CREDENTIALS: ${{ secrets.GDRIVE_SERVICE_ACCOUNT }}
           RCLONE_CONFIG_GDRIVE_ROOT_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
         run: |
-          rclone copy gdrive: recipes \
+          rclone sync gdrive: recipes \
             --include "*.cook" \
+            --include "config/aisle.conf" \
             --include "*.{jpg,jpeg,png,webp,JPG,JPEG,PNG}" \
             --transfers 16
-          echo "Downloaded $(find recipes -name '*.cook' | wc -l) recipes"
+          echo "Have $(find recipes -name '*.cook' | wc -l) recipes"
+
+      - name: Keep this download for the next run
+        uses: actions/cache/save@v4
+        with:
+          path: recipes
+          key: recipes-${{ hashFiles('recipes/**') }}
+        continue-on-error: true # the same download is already kept
+
+      # Photos resized by an earlier run; build.py only makes the new ones
+      # and removes the ones no recipe uses any more.
+      - name: Restore the resized photos
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            site/img
+            site/thumb
+          key: photos-
+          restore-keys: photos-
 
       - name: Build site
         env:
@@ -51,16 +95,41 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
           AUTH_URL: ${{ vars.AUTH_URL }}
           GDRIVE_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
-        run: python3 scripts/build.py recipes app site
+        run: python3 scripts/build.py recipes app site --keep-photos
 
-      - uses: actions/configure-pages@v6
+      - name: Keep the resized photos for the next run
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            site/img
+            site/thumb
+          key: photos-${{ hashFiles('site/img/**', 'site/thumb/**') }}
+        continue-on-error: true
 
-      - uses: actions/upload-pages-artifact@v5
+      - id: pages
+        uses: actions/configure-pages@v6
+
+      # The live site's version.txt is a fingerprint of everything but the
+      # build time. The hourly run stops here when it matches.
+      - name: Anything new?
+        id: changed
+        run: |
+          live=$(curl -fsSL "${{ steps.pages.outputs.base_url }}/version.txt" 2>/dev/null || true)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$live" = "$(cat site/version.txt)" ]; then
+            echo "Nothing changed since the last publish."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.changed.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
   deploy:
     needs: build
+    if: ${{ !cancelled() && needs.build.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       pages: write
