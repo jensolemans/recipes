@@ -4,6 +4,7 @@ import {
 } from './cooklang.js';
 import * as drive from './drive.js';
 import * as shop from './shopping.js';
+import * as plan from './plan.js';
 import { qrSvg } from './qr.js';
 
 // ---------------------------------------------------------------- helpers
@@ -62,6 +63,7 @@ const S = {
   currentHash: '',
   checked: new Map(), // path -> Set of checked ingredient keys
   shop: null, // shopping list sync, when sign-in is set up
+  plan: null, // meal plan sync, the same way
   conf: { aisle: saved.get('conf.aisle', null), pantry: saved.get('conf.pantry', null) }, // { id, md5, text }
   parserReady: false,
 };
@@ -134,7 +136,8 @@ async function boot() {
   drive.configure(S.config.clientId, S.config.authUrl);
   if (drive.enabled()) {
     S.shop = shop.createSync({ drive, configFolder, onChange: onShopChange });
-    window.addEventListener('online', () => { if (drive.wasSignedIn()) S.shop.sync(); });
+    S.plan = shop.createSync({ drive, configFolder, onChange: onPlanChange, file: 'plan.json', storeKey: 'recipes.plan', clean: plan.cleanPlan, apply: plan.applyPlan });
+    window.addEventListener('online', () => { if (drive.wasSignedIn()) { S.shop.sync(); S.plan.sync(); } });
   }
   if (drive.wasSignedIn()) checkConnector();
   window.addEventListener('online', () => {
@@ -151,6 +154,7 @@ async function boot() {
   renderAccount();
   renderFoot();
   initSide();
+  initPlanDrag();
   initTimers();
   window.addEventListener('hashchange', onHashChange);
   window.addEventListener('beforeunload', (ev) => { if (S.dirty) { ev.preventDefault(); ev.returnValue = ''; } });
@@ -162,6 +166,8 @@ async function boot() {
     watchSession();
     if (drive.wasSignedIn()) checkConnector();
     if ($('#shop-body')) S.shop?.sync();
+    // A new day may have begun: meals not cooked move on.
+    if ($('#plan-root') || $('#today')) S.plan?.sync();
     if (document.body.dataset.view === 'cook' && saved.get('cookAwake', true)) keepAwake(true); // the lock goes when the tab is hidden
   });
 }
@@ -197,7 +203,7 @@ async function onHashChange() {
 
 function route() {
   S.currentHash = location.hash || '#/';
-  if (parseHash().path !== '/list') S.lastPage = S.currentHash; // where the full list goes back to
+  if (!['/list', '/plan'].includes(parseHash().path)) S.lastPage = S.currentHash; // where the full list and plan go back to
   renderAccount();
   stopListPolling();
   renderSide();
@@ -205,6 +211,7 @@ function route() {
   document.body.dataset.view = '';
   if (!path.startsWith('/cook/')) keepAwake(false);
   if (path === '/list') return showList();
+  if (path === '/plan') return showPlanPage();
   if (path.startsWith('/r/')) return showRecipe(path.slice(3), params);
   if (path.startsWith('/cook/')) return showCook(path.slice(6), params);
   if (path.startsWith('/edit/')) return showEditor(path.slice(6));
@@ -379,6 +386,7 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeMen
 
 function renderAccount() {
   renderTabbar();
+  document.body.classList.toggle('can-plan', canPlan());
   const el = $('#account');
   if (!drive.enabled()) { el.innerHTML = ''; return; }
   const list = drive.wasSignedIn() ? listLink() : '';
@@ -404,6 +412,7 @@ function renderAccount() {
     el.querySelector('[data-action="signout"]').onclick = () => {
       drive.signOut();
       S.shop?.reset();
+      S.plan?.reset();
       saved.set('conf.aisle', null);
       saved.set('conf.pantry', null);
       location.reload();
@@ -429,6 +438,7 @@ async function signInFlow() {
     await drive.signIn();
     watchSession();
     S.shop?.sync();
+    S.plan?.sync();
     if (S.live === 'on') { renderAccount(); toast(drive.lasting() ? 'Signed in again.' : 'Signed in again for another hour.'); return; }
     await goLive();
   } catch (e) {
@@ -584,6 +594,8 @@ async function goLive() {
     S.live = 'on';
     S.shop?.useFile(files.get(shop.LIST_PATH));
     S.shop?.sync();
+    S.plan?.useFile(files.get(plan.PLAN_PATH));
+    S.plan?.sync();
   } catch (e) {
     S.live = 'off';
     toast(e.message || 'Could not load recipes from Google Drive.');
@@ -680,6 +692,7 @@ function showHome() {
         </label>
       </div>
       <div class="active" id="active"></div>
+      <div id="today"></div>
       <div class="grid" id="grid"></div>
       <dialog class="sheet" id="browse" aria-label="Browse recipes"></dialog>
     </section>`;
@@ -700,6 +713,7 @@ function showHome() {
     updateHome();
   };
   updateHome();
+  drawToday();
 }
 
 function updateHome() {
@@ -1152,6 +1166,7 @@ async function showRecipe(rawPath, params) {
             <span class="row-break" aria-hidden="true"></span>
             <a class="btn btn-primary icon-btn" id="cook-btn" href="#/cook/${encPath(path)}" title="Cook mode" aria-label="Cook mode">${CHEF_ICON}</a>
             ${S.shop && S.live === 'on' ? `<button class="btn btn-quiet icon-btn" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}</button>` : ''}
+            ${canPlan() ? `<button class="btn btn-quiet icon-btn" id="save-btn" title="Save" aria-label="Save">${BOOKMARK_ICON}</button>` : ''}
             ${owner
               ? `<a class="btn btn-quiet icon-btn" id="edit-btn" ${claudeLink(path)} title="Edit" aria-label="Edit">${PEN_ICON}</a>`
               : `<button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>`}
@@ -1201,6 +1216,7 @@ async function showRecipe(rawPath, params) {
     if (owner) $('#body .method').insertAdjacentHTML('beforeend', `<p class="cooked">Cooked it? <a ${claudeLink(path, true)}>Note what to change for next time</a></p>`);
     drawScaler();
     drawAddList();
+    drawSave();
     wireBody();
     const q = new URLSearchParams();
     if (base && servings !== base) q.set('s', servings);
@@ -1275,6 +1291,33 @@ async function showRecipe(rawPath, params) {
   // Another device or the side panel can change the list while this is open.
   S.refreshAddList = drawAddList;
 
+  // Save: one tap puts it in Saved, at the size on the page when you changed
+  // it, else at Cooking for. Filled when it is saved or planned.
+  const drawSave = () => {
+    const btn = $('#save-btn');
+    if (!btn) return;
+    const u = plan.uses(P(), path);
+    const t = plan.dayKey();
+    const next = u.meals.filter((m) => !isCooked(m) && m.day >= t).sort(byDayMeal)[0];
+    const s = u.saved[0];
+    const label = s ? 'Saved. Tap to remove.' : next ? `Planned for ${dayWord(next.day)}. Tap to save it again.` : 'Save';
+    btn.dataset.state = s ? 'saved' : next ? 'planned' : 'off';
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-pressed', String(Boolean(s)));
+    btn.innerHTML = s ? BOOKMARK_ON_ICON : next ? CAL_ICON : BOOKMARK_ICON;
+  };
+  S.refreshSave = drawSave;
+  const saveBtn = $('#save-btn');
+  if (saveBtn) saveBtn.onclick = () => {
+    const s = plan.uses(P(), path).saved[0];
+    if (s) {
+      planUndo(`Removed ${e.title} from Saved.`, { t: 'unsave', id: s.id });
+      return;
+    }
+    saveRecipe(path, { servings: base && servings !== base ? servings : null, x: !base && mult !== 1 ? mult : null });
+  };
+
   const addList = $('#add-list');
   if (addList) addList.onclick = async () => {
     const factor = base ? servings / base : mult;
@@ -1299,7 +1342,7 @@ async function showRecipe(rawPath, params) {
     S.shop.do({ t: 'addRecipe', id, path, title: e.title, servings: base ? servings : null, factor, parts, keys });
     // The first time on a wide screen the panel opens by itself; after
     // that it stays the way it was left.
-    if (sideMode() !== 'off' && saved.get('sidePanel', null) == null) setSide('open');
+    if (sideMode() !== 'off' && saved.get('sidePanel', null) == null) showSideTab('list');
     const size = [base ? servingsText(servings) : `${mult}×`, parts ? partsText(parts) : ''].filter(Boolean).join(', ');
     toast(existing ? `${e.title} on your shopping list is now ${size}.` : `Added ${e.title} (${size}) to your shopping list.`,
       { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
@@ -1520,6 +1563,7 @@ async function showCook(rawPath, params) {
   let servings = fromLink(params.get('s'), 1, 100) ?? base;
   let mult = fromLink(params.get('x'), 0.25, 10) ?? 1;
   let at = fromLink(params.get('step'), 0, 999) ?? 0;
+  const planId = params.get('plan'); // opened from the plan: Finish ticks that meal
   let mode = saved.get('cookMode', 'steps') === 'scroll' ? 'scroll' : 'steps';
   let awake = saved.get('cookAwake', true);
   const checked = S.checked.get(path) || new Set();
@@ -1705,6 +1749,7 @@ async function showCook(rawPath, params) {
   // what to improve for next time while it is fresh.
   const finish = () => {
     if (!(drive.enabled() && drive.wasSignedIn())) { go(backHash()); return; }
+    markCooked(path, planId);
     const dlg = $('#choose');
     openChoose($('#cook-next'), path, true, true);
     // Edit the file has already moved on; the rest go back.
@@ -1889,6 +1934,7 @@ function listLink() {
 function onShopChange() {
   renderAccount();
   S.refreshAddList?.();
+  drawPlan(); // in list and bought show on the plan
   if ($('#shop-body')) updateList();
   else renderSide();
 }
@@ -1906,7 +1952,7 @@ async function configFolder() {
 let listPoll = null;
 function startListPolling() {
   stopListPolling();
-  listPoll = setInterval(() => { if (!document.hidden) S.shop.sync(); }, 15000);
+  listPoll = setInterval(() => { if (!document.hidden) { S.shop.sync(); if ($('#plan-root')) S.plan?.sync(); } }, 15000);
 }
 function stopListPolling() { clearInterval(listPoll); listPoll = null; }
 
@@ -1929,14 +1975,15 @@ async function mountList(root, panel) {
   const view = saved.get('listView', 'aisle');
   const count = '<span class="shop-count" id="shop-count"></span>';
   root.innerHTML = `
-    <section class="shop${panel ? ' shop-panel' : ''}">
+    <section class="shop${panel ? ' shop-panel' : ''}"${panel ? ' data-drop="list"' : ''}>
       ${panel ? `<div class="side-head">
-        <h2>Shopping list</h2>${count}
+        ${canPlan() ? sideToggle('list') : '<h2>Shopping list</h2>'}${count}
         <a class="icon-btn" href="#/list" title="Open as a page" aria-label="Open the shopping list as a page">${EXPAND_ICON}</a>
         <button class="icon-btn" id="side-close" title="Close (L)" aria-label="Close the shopping list">${PANEL_ICON}</button>
       </div>
       <p class="shop-status" id="shop-status" aria-live="polite"></p>` : `<div class="shop-head">
         <h1>Shopping list</h1>
+        ${canPlan() ? '<div class="seg side-tabs list-tabs" role="group" aria-label="Show"><button type="button" data-page-tab="plan" aria-pressed="false">Plan</button><button type="button" aria-pressed="true">List</button></div>' : ''}
         <p class="shop-status" id="shop-status" aria-live="polite"></p>
         <button class="icon-btn shop-to-side" id="to-side" title="Show beside the recipes (L)" aria-label="Show the shopping list beside the recipes">${SHRINK_ICON}</button>
       </div>`}
@@ -1960,6 +2007,8 @@ async function mountList(root, panel) {
 
   if (panel) $('#side-close', root).onclick = () => setSide('closed');
   else $('#to-side', root).onclick = listToSide;
+  $$('[data-side-tab]', root).forEach((b) => { b.onclick = () => showSideTab(b.dataset.sideTab); });
+  $$('[data-page-tab]', root).forEach((b) => { b.onclick = () => go('#/plan'); });
   $('#shop-add', root).onsubmit = (ev) => {
     ev.preventDefault();
     const input = $('#shop-new', root);
@@ -1993,6 +2042,14 @@ async function mountList(root, panel) {
   body.addEventListener('click', (ev) => {
     const more = ev.target.closest('[data-more]');
     if (more) { itemSheet(more.closest('.shop-row')); return; }
+    const fold = ev.target.closest('[data-fold-recipe]');
+    if (fold) {
+      const k = fold.dataset.foldRecipe;
+      listFolded.has(k) ? listFolded.delete(k) : listFolded.add(k);
+      saved.set('listFolded', [...listFolded].filter((x) => S.shop.list.recipes.some((r) => r.path === x)));
+      updateList();
+      return;
+    }
     const rem = ev.target.closest('[data-remove-recipe]');
     if (rem) {
       const r = S.shop.list.recipes.find((x) => x.id === rem.dataset.removeRecipe);
@@ -2010,6 +2067,1200 @@ async function mountList(root, panel) {
   if (S.live !== 'loading') S.shop.sync();
 }
 
+// ---------------------------------------------------------------- meal plan
+
+// Saved recipes and the days ahead (plan.js has the data and its rules).
+// Signed in only. It shows in three places: the side panel beside the
+// recipes on wide screens, #/plan (a real week on wide screens, the Plan tab
+// on phones), and Today on top of the home page.
+const BOOKMARK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10a1 1 0 0 1 1 1v16l-6-4.2-6 4.2v-16a1 1 0 0 1 1-1z"/></svg>';
+const BOOKMARK_ON_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10a1 1 0 0 1 1 1v16l-6-4.2-6 4.2v-16a1 1 0 0 1 1-1z" fill="currentColor"/></svg>';
+const CAL_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>';
+// bought: a bag with a tick; cooked: a ticked circle
+const BAG_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8h13l-1 12.5h-11z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8M9.5 14.2l1.8 1.8 3.4-3.6"/></svg>';
+const COOKED_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-4.9"/></svg>';
+const WARN_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 2.8 19.5h18.4z"/><path d="M12 10v4.5M12 17h.01"/></svg>';
+const MEAL_ICONS = {
+  breakfast: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5h11v4.5a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z"/><path d="M16 10.5h1.5a2.5 2.5 0 0 1 0 5H16M9 3.5v2.5M12.5 3.5v2.5"/></svg>',
+  lunch: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>',
+  dinner: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></svg>',
+  snack: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.5c-2-1.5-6.5-1-6.5 4 0 4.5 3 8.5 5 8.5 1 0 1-.5 1.5-.5s.5.5 1.5.5c2 0 5-4 5-8.5 0-5-4.5-5.5-6.5-4z"/><path d="M12 7.5c0-2 .5-3.5 2-4.5"/></svg>',
+};
+const NOTE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4.5h13v10l-5 5h-8z"/><path d="M13.5 19.5v-5h5M9 9h6M9 12.5h3"/></svg>';
+const SALAD_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12h17a8.5 8.5 0 0 1-17 0zM7 12a5 5 0 0 1 10 0"/></svg>';
+
+const canPlan = () => Boolean(S.plan && drive.wasSignedIn());
+const P = () => S.plan.list;
+const planServings = (x) => x.servings ?? P().servings;
+const planTitleOf = (x) => (x.path && S.recipes.get(x.path)?.title) || x.title || prettifyFile((x.path || '').split('/').pop());
+// Only live data knows for sure that a recipe is gone; the built copy can be an hour old.
+const isGone = (x) => Boolean(x.path) && S.live === 'on' && !S.recipes.has(x.path);
+const isCooked = (x) => x.kind === 'recipe' && plan.isCookedIn(P(), x);
+const mealOrder = (m) => [...plan.MEALS, 'notes'].indexOf(m);
+const byDayMeal = (a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : mealOrder(a.meal) - mealOrder(b.meal));
+
+/** How much of a recipe a plan entry is: its servings over the recipe's, or its multiplier. */
+function planFactor(x) {
+  const e = S.recipes.get(x.path);
+  const base = e && baseServings(e);
+  return base ? planServings(x) / base : (x.x || 1);
+}
+function planSize(x) {
+  const e = S.recipes.get(x.path);
+  return e && !baseServings(e) ? `${x.x || 1}×` : servingsText(planServings(x));
+}
+/** Set by hand, so it no longer follows "Cooking for". */
+const ownSize = (x) => (x.servings != null && x.servings !== P().servings) || (x.x != null && x.x !== 1);
+/** The size in the bubble at the end of a chip: servings, or the multiplier. */
+function planBubble(x) {
+  const e = S.recipes.get(x.path);
+  return e && !baseServings(e) ? `${x.x || 1}×` : String(planServings(x));
+}
+/** Everything a batch cooks, for cook mode on its first day. */
+function batchSize(x) {
+  const all = plan.cookedOnce(P(), x) ? plan.batchOf(P(), x) : [x];
+  return { servings: all.reduce((n, m) => n + planServings(m), 0), x: all.reduce((n, m) => n + (m.x || 1), 0), n: all.length };
+}
+
+function dayName(key) {
+  const t = plan.dayKey();
+  if (key === t) return 'Today';
+  if (key === plan.addDays(t, 1)) return 'Tomorrow';
+  if (key === plan.addDays(t, -1)) return 'Yesterday';
+  return plan.toDate(key).toLocaleDateString(undefined, { weekday: 'long' });
+}
+const dateText = (key) => plan.toDate(key).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+/** today, tomorrow, or the name of the day, for the middle of a sentence. */
+const dayWord = (key) => { const n = dayName(key); return ['Today', 'Tomorrow', 'Yesterday'].includes(n) ? n.toLowerCase() : n; };
+const weekday = (key) => plan.toDate(key).toLocaleDateString(undefined, { weekday: 'short' });
+/** The meal that fits the time of day, for a recipe cooked without a plan. */
+const mealNow = () => { const h = new Date().getHours(); return h < 11 ? 'breakfast' : h < 15 ? 'lunch' : h < 17 ? 'snack' : 'dinner'; };
+
+/** A saved or planned entry by id, wherever it is. */
+const planEntry = (id) => P().meals.find((m) => m.id === id) || P().saved.find((s) => s.id === id) || null;
+
+// ---- the plan and the shopping list stay in step
+
+/** Whether everything a list recipe needs is in the basket, per list recipe id. */
+let boughtMemo = { list: null, aisle: null, pantry: null, map: new Map() };
+function boughtMap() {
+  const list = S.shop?.list;
+  if (!list || !S.parserReady) return new Map();
+  const ctx = shopCtx();
+  if (boughtMemo.list !== list || boughtMemo.aisle !== ctx.aisle || boughtMemo.pantry !== ctx.pantry) {
+    const map = new Map();
+    try {
+      const b = shop.buildList(list, ctx);
+      for (const r of b.recipes) map.set(r.id, !r.missing && r.lines.every((l) => l.group.checked || !toBuy(l.group)));
+      for (const it of b.manual) map.set(it.id, it.group.checked);
+    } catch { /* not ready */ }
+    boughtMemo = { list, aisle: ctx.aisle, pantry: ctx.pantry, map };
+  }
+  return boughtMemo.map;
+}
+
+/** cooked | bought | list | '' for a plan entry. */
+function planState(x) {
+  if (isCooked(x)) return 'cooked';
+  if (x.bought) return 'bought';
+  if (!S.shop) return '';
+  if (x.kind === 'item') {
+    if (!S.shop.list.items.some((i) => i.id === x.id)) return '';
+    return boughtMap().get(x.id) ? 'bought' : 'list';
+  }
+  const r = S.shop.list.recipes.find((l) => l.planIds?.includes(x.id));
+  if (!r) return '';
+  return boughtMap().get(r.id) ? 'bought' : 'list';
+}
+
+/**
+ * Puts plan entries of one recipe on the shopping list, or takes them off
+ * (`drop`), as one list recipe at the size of all of them together. What
+ * was added by hand on the recipe page stays as `extra`.
+ */
+function linkList(path, add = [], drop = []) {
+  const e = S.recipes.get(path);
+  if (!S.shop || !e) return;
+  const prior = S.shop.list.recipes.find((r) => r.path === path);
+  if (!prior && !add.length) return;
+  const extra = prior ? (prior.planIds ? prior.extra || 0 : prior.factor || 1) : 0;
+  const ids = [...new Set([...(prior?.planIds || []), ...add])].filter((id) => !drop.includes(id) && P().meals.some((m) => m.id === id));
+  if (!ids.length && !extra) { S.shop.do({ t: 'removeRecipe', id: prior.id }); return; }
+  const factor = Math.round((extra + ids.reduce((n, id) => n + planFactor(planEntry(id)), 0)) * 1000) / 1000;
+  const base = baseServings(e);
+  S.shop.do({
+    t: 'addRecipe', id: prior?.id || shop.newId(), path, title: e.title, servings: base ? Math.round(factor * base * 100) / 100 : null, factor,
+    parts: prior?.parts || null, keys: add.length ? shop.recipeKeys(e.src, factor, shopCtx(), prior?.parts || null) : [], planIds: ids, extra,
+  });
+}
+/** After a plan entry changed size or went: the list follows, if it was on it. */
+function relinkList(x, gone = false) {
+  if (!x || !x.path || !S.shop) return;
+  if (S.shop.list.recipes.some((r) => r.path === x.path && r.planIds?.includes(x.id))) linkList(x.path, [], gone ? [x.id] : []);
+}
+
+/** Adds plan entries (recipes and loose ingredients) to the shopping list. */
+function addPlanToList(entries) {
+  const byPath = new Map();
+  for (const x of entries) {
+    if (x.kind === 'item') {
+      S.shop.do({ t: 'addItem', id: x.id, name: x.title, n: x.n ?? null, unit: x.unit || '', key: shop.lookup(shopCtx().aisle, x.title).key });
+      continue;
+    }
+    if (!byPath.has(x.path)) byPath.set(x.path, []);
+    byPath.get(x.path).push(x.id);
+  }
+  for (const [path, ids] of byPath) linkList(path, ids);
+}
+
+// ---- changes
+
+function planUndo(msg, ops) {
+  const before = P();
+  for (const op of [].concat(ops)) S.plan.do(op);
+  toast(msg, { label: 'Undo', run: () => S.plan.do({ t: 'restore', plan: before }) });
+}
+
+function saveRecipe(path, { servings = null, x = null, quiet = false } = {}) {
+  const e = S.recipes.get(path);
+  if (!e) return;
+  if (servings === P().servings) servings = null;
+  const op = { t: 'save', id: shop.newId(), path, title: e.title, servings, x };
+  const size = baseServings(e) ? `for ${servings ?? P().servings}` : x && x !== 1 ? `${x}×` : '';
+  if (quiet) { S.plan.do(op); return; }
+  planUndo(`Saved ${e.title}${size ? ` ${size}` : ''}.`, op);
+  if (sideMode() !== 'off' && saved.get('sidePanel', null) == null) showSideTab('plan');
+}
+
+function placeRecipe(path, day, meal, extra = {}) {
+  const e = S.recipes.get(path);
+  if (!e) return;
+  S.plan.do({ t: 'place', entries: [{ id: shop.newId(), kind: 'recipe', path, title: e.title, day, meal, ...extra }] });
+}
+
+/** Ticks a meal cooked or not. Cooked once for more days, the whole batch goes with it. */
+function setCooked(m, on) {
+  for (const x of plan.cookedOnce(P(), m) ? plan.batchOf(P(), m) : [m]) {
+    S.plan.do({ t: 'edit', id: x.id, set: { cooked: on ? (x.cooked || plan.dayKey()) : null } });
+  }
+}
+
+/** Ticks a meal as cooked, from cook mode's Finish. Without a plan id, the one planned for today or before. */
+function markCooked(path, id) {
+  if (!canPlan()) return;
+  const t = plan.dayKey();
+  const p = P();
+  let m = id ? p.meals.find((x) => x.id === id) : null;
+  const s = id && !m ? p.saved.find((x) => x.id === id) : null;
+  if (!m && !s) m = p.meals.filter((x) => x.kind === 'recipe' && x.path === path && !isCooked(x) && x.day <= t).sort(byDayMeal)[0];
+  if (m) {
+    if (!isCooked(m)) setCooked(m, true);
+    return;
+  }
+  // Cooked straight from Saved: it goes on today, ticked.
+  if (s) S.plan.do({ t: 'place', entries: [{ ...s, kind: 'recipe', day: t, meal: mealNow(), cooked: t, fromSaved: s.id }] });
+}
+
+/**
+ * A new "Cooking for". Meals that follow it change size, and the shopping
+ * list with them; what is bought or cooked already keeps its size.
+ */
+function setCooking(n) {
+  const p = P();
+  if (n === p.servings) return;
+  const follow = p.meals.filter((m) => m.kind === 'recipe' && m.servings == null);
+  const keep = follow.filter((m) => ['bought', 'cooked'].includes(planState(m)));
+  const listed = new Set(follow.filter((m) => planState(m) === 'list').map((m) => m.path));
+  for (const m of keep) S.plan.do({ t: 'edit', id: m.id, set: { servings: p.servings } });
+  S.plan.do({ t: 'cooking', n });
+  for (const path of listed) linkList(path);
+}
+
+function addDay() {
+  const days = plan.upcoming(P());
+  S.plan.do({ t: 'until', day: plan.addDays(days[days.length - 1], 1) });
+}
+
+/** Takes a meal or a saved recipe out of the plan, and off the shopping list unless bought. */
+function removeEntry(src, x) {
+  const name = x.kind === 'recipe' || src !== 'meal' ? planTitleOf(x) : x.title;
+  const listed = src === 'meal' && planState(x) === 'list';
+  const planBefore = P();
+  const listBefore = S.shop?.list;
+  S.plan.do(src === 'meal' ? { t: 'remove', id: x.id } : { t: 'unsave', id: x.id });
+  if (listed) {
+    if (x.kind === 'item') S.shop.do({ t: 'removeItem', id: x.id });
+    else linkList(x.path, [], [x.id]);
+  }
+  toast(`Removed ${name}${listed ? ' from the plan and the shopping list' : ''}.`, { label: 'Undo', run: () => {
+    S.plan.do({ t: 'restore', plan: planBefore });
+    if (listBefore && listBefore !== S.shop.list) S.shop.do({ t: 'restore', list: listBefore });
+  } });
+}
+
+/** A recipe card or a plan chip dropped on the shopping list. */
+function dropOnList(d) {
+  if (!S.shop) return;
+  const p = canPlan() ? P() : null;
+  if (d.src === 'meal') {
+    const m = p?.meals.find((x) => x.id === d.id);
+    if (!m || !['recipe', 'item'].includes(m.kind) || planState(m)) return;
+    const before = S.shop.list;
+    addPlanToList([m]);
+    toast(`Added ${m.kind === 'item' ? m.title : planTitleOf(m)} to your shopping list.`, { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
+    return;
+  }
+  const s = d.src === 'saved' ? p?.saved.find((x) => x.id === d.id) : null;
+  const path = s ? s.path : d.path;
+  const e = S.recipes.get(path);
+  if (!e || !S.parserReady) return;
+  // At its size in Saved, else Cooking for, else as written.
+  const base = baseServings(e);
+  const servings = base ? (s?.servings ?? p?.servings ?? base) : null;
+  const factor = base ? servings / base : (s?.x || 1);
+  const prior = S.shop.list.recipes.find((r) => r.path === path);
+  const before = S.shop.list;
+  const id = shop.newId();
+  const keys = shop.recipeKeys(e.src, factor, shopCtx(), prior?.parts || null);
+  S.flash = { recipeId: id, keys: new Set(keys), start: Date.now(), until: Date.now() + 2500 };
+  S.shop.do({ t: 'addRecipe', id, path, title: e.title, servings, factor, parts: prior?.parts || null, keys });
+  toast(`Added ${e.title} (${base ? servingsText(servings) : `${factor}×`}) to your shopping list.`, { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
+}
+
+/** What happens when something is dropped on a target of the plan. `copy`: Alt was held. */
+function dropOn(target, d, copy) {
+  const kind = target.dataset.drop;
+  const p = P();
+  if (kind === 'trash') {
+    const x = d.src === 'meal' ? p.meals.find((m) => m.id === d.id) : d.src === 'saved' ? p.saved.find((s) => s.id === d.id) : null;
+    if (x) removeEntry(d.src, x);
+    return;
+  }
+  if (kind === 'list') { dropOnList(d); return; }
+  if (kind === 'saved') {
+    if (d.src === 'recipe') saveRecipe(d.path);
+    else if (d.src === 'meal') {
+      const m = p.meals.find((x) => x.id === d.id);
+      if (m?.kind !== 'recipe') return;
+      relinkList(m, true);
+      S.plan.do({ t: 'toSaved', id: m.id });
+    }
+    return;
+  }
+  const day = target.dataset.day;
+  const meal = target.dataset.meal;
+  if (!day || !meal) return;
+  if (d.src === 'recipe') { if (meal !== 'notes') placeRecipe(d.path, day, meal); return; }
+  if (d.src === 'saved') {
+    const s = p.saved.find((x) => x.id === d.id);
+    if (!s || meal === 'notes') return;
+    const id = copy ? shop.newId() : s.id;
+    S.plan.do({ t: 'place', entries: [{ ...s, id, kind: 'recipe', day, meal, fromSaved: copy ? null : s.id }] });
+    return;
+  }
+  if (d.src === 'meal') {
+    const m = p.meals.find((x) => x.id === d.id);
+    if (!m) return;
+    // Notes stay notes, and only notes go in the notes row.
+    const to = m.kind === 'note' ? 'notes' : meal === 'notes' ? null : meal;
+    if (!to) return;
+    if (copy) {
+      const { cooked, bought, batch, each, ...rest } = m;
+      S.plan.do({ t: 'place', entries: [{ ...rest, id: shop.newId(), day, meal: to }] });
+    } else if (m.day !== day || m.meal !== to) S.plan.do({ t: 'move', id: m.id, day, meal: to });
+  }
+}
+
+// ---- drawing
+
+function planThumb(x) {
+  if (x.kind === 'note') return `<span class="pthumb is-icon">${NOTE_ICON}</span>`;
+  if (x.kind === 'item') return `<span class="pthumb is-icon">${BASKET_ICON}</span>`;
+  if (x.kind === 'free') return `<span class="pthumb is-icon">${SALAD_ICON}</span>`;
+  const e = x.path && S.recipes.get(x.path);
+  if (e?.thumbUrl) return `<span class="pthumb"><img src="${esc(e.thumbUrl)}" alt="" loading="lazy" decoding="async"></span>`;
+  return `<span class="pthumb"><span class="ph" aria-hidden="true">${esc(planTitleOf(x).charAt(0))}</span></span>`;
+}
+
+const STATE_ICONS = { list: BASKET_ICON, bought: BAG_ICON, cooked: COOKED_ICON };
+const STATE_WORDS = { list: 'on the shopping list', bought: 'bought', cooked: 'cooked' };
+
+/** One saved or planned thing: photo, name, a state icon and the servings bubble. `src`: meal or saved. */
+function planChip(x, src) {
+  const gone = isGone(x) && x.kind === 'recipe';
+  const state = src === 'meal' ? planState(x) : '';
+  const cls = [`pchip kind-${x.kind || 'recipe'}`];
+  const isRecipe = src === 'saved' || x.kind === 'recipe';
+  let sub = '';
+  if (x.kind === 'free') sub = 'No recipe';
+  else if (x.kind === 'item') sub = x.n != null ? fmtAmount(x.n, x.unit || '') : 'To buy';
+  if (src === 'meal' && isRecipe) {
+    const first = plan.cookMeal(P(), x);
+    if (first !== x) { cls.push('is-later'); sub = `${first.cooked ? 'Cooked' : 'From'} ${weekday(first.day)}`; }
+    else if (x.cooked && x.cooked < x.day) sub = `Cooked ${weekday(x.cooked)}`;
+    else if (plan.cookedOnce(P(), x)) sub = `Cook for ${plan.batchOf(P(), x).length} days`;
+  }
+  if (x.note) sub = sub ? `${sub} · ${x.note}` : x.note;
+  if (state) cls.push(`is-${state}`);
+  if (gone) { cls.push('is-gone'); sub = 'This recipe was deleted'; }
+  const title = isRecipe ? planTitleOf(x) : x.title;
+  const mark = gone ? WARN_ICON : STATE_ICONS[state] || '';
+  const bubble = isRecipe && !gone ? `<span class="pbubble${ownSize(x) ? ' is-own' : ''}" title="${esc(planSize(x))}">${esc(planBubble(x))}</span>` : '';
+  const label = [title, isRecipe ? planSize(x) : '', sub, STATE_WORDS[state]].filter(Boolean).join(', ');
+  return `<button class="${cls.join(' ')}" type="button" draggable="true" data-src="${src}" data-id="${esc(x.id)}" aria-label="${esc(label)}">
+    ${planThumb(x)}<span class="pchip-text"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${mark ? `<span class="pchip-mark">${mark}</span>` : ''}${bubble}
+  </button>`;
+}
+
+function savedHTML(layout) {
+  const now = P().saved;
+  const hint = layout === 'page' ? 'Tap Save on a recipe, or hold a recipe card. Hold one here to drag it onto a day.' : 'Drag a recipe here, or tap Save on a recipe.';
+  return `<section class="psaved" data-drop="saved">
+      <div class="psec-head"><h3>Saved</h3><span>${now.length || ''}</span></div>
+      ${now.length ? `<div class="pchips">${now.map((s) => planChip(s, 'saved')).join('')}</div>` : `<p class="phint">${hint}</p>`}
+    </section>`;
+}
+
+// Days folded away, per device.
+const planFolded = new Set(saved.get('planFolded', []));
+
+function dayHTML(day) {
+  const xs = plan.on(P(), day).sort(byDayMeal);
+  const t = plan.dayKey();
+  const late = day < t && xs.some((m) => m.kind === 'recipe' && !isCooked(m));
+  const slots = plan.MEALS.map((meal) => {
+    const here = xs.filter((m) => m.meal === meal);
+    return `<div class="pslot${here.length ? '' : ' is-empty'}" data-drop="slot" data-day="${day}" data-meal="${meal}">
+      <span class="pslot-icon" title="${plan.MEAL_NAMES[meal]}">${MEAL_ICONS[meal]}</span>
+      <div class="pslot-items">${here.length ? here.map((m) => planChip(m, 'meal')).join('') : `<span class="pslot-name">${plan.MEAL_NAMES[meal]}</span>`}</div>
+    </div>`;
+  }).join('');
+  const notes = xs.filter((m) => m.meal === 'notes');
+  const folded = planFolded.has(day);
+  const n = xs.filter((m) => m.meal !== 'notes').length;
+  return `<li class="pday${day === t ? ' is-today' : ''}${day < t ? ' is-past' : ''}${late ? ' is-late' : ''}${xs.length ? '' : ' is-blank'}${folded ? ' is-folded' : ''}">
+    <div class="pday-head">
+      <button class="pday-fold" type="button" data-fold-day="${day}" aria-expanded="${!folded}" title="${folded ? 'Show' : 'Hide'} this day">${CHEVRON_ICON}</button>
+      <b>${esc(dayName(day))}</b><span>${esc(dateText(day))}${folded && n ? ` · ${n} ${n === 1 ? 'meal' : 'meals'}` : ''}</span>
+      <button class="icon-btn pday-add" type="button" data-add-day="${day}" title="Add to this day" aria-label="Add to ${esc(dayName(day))}">${PLUS_ICON}</button></div>
+    ${late ? `<p class="plate">${WARN_ICON}<span>Not ticked as cooked. Move it to a day, or tap it and tick Cooked.</span></p>` : ''}
+    <div class="pday-body">
+    ${xs.length ? '' : '<p class="pday-empty">Nothing planned</p>'}
+    ${slots}
+    ${notes.length ? `<div class="pnotes">${notes.map((m) => planChip(m, 'meal')).join('')}</div>` : ''}
+    </div>
+  </li>`;
+}
+
+function cookingForHTML() {
+  const n = P().servings;
+  return `<div class="pcook"><span>Cooking for</span>
+    <div class="scaler">
+      <button class="step-btn" type="button" data-cook="-1" aria-label="Cook for fewer" ${n <= 1 ? 'disabled' : ''}>−</button>
+      <output aria-live="polite"><b>${n}</b></output>
+      <button class="step-btn" type="button" data-cook="1" aria-label="Cook for more">+</button>
+    </div></div>`;
+}
+
+const sideToggle = (on, attr = 'data-side-tab') => `<div class="seg side-tabs" role="group" aria-label="Show">
+  <button type="button" ${attr}="plan" aria-pressed="${on === 'plan'}" title="Plan (P)" aria-label="Plan">${CAL_ICON}</button>
+  <button type="button" ${attr}="list" aria-pressed="${on === 'list'}" title="Shopping list (L)" aria-label="Shopping list"${attr === 'data-side-tab' ? ' data-drop="list"' : ''}>${BASKET_ICON}</button></div>`;
+
+/** The calendar: days left uncooked first, then today and on. */
+function daysHTML() {
+  const p = P();
+  const t = plan.dayKey();
+  return `<section class="pcal"><div class="psec-head"><h3>Calendar</h3></div>
+    <ol class="pdays">${[...plan.late(p, t), ...plan.upcoming(p, t)].map(dayHTML).join('')}</ol>
+    <button class="pghost" type="button" data-act="add-day">${PLUS_ICON}<span>Add a day</span></button></section>`;
+}
+
+function weekHTML() {
+  const p = P();
+  const t = plan.dayKey();
+  const lateDays = plan.late(p, t);
+  const past = S.weekEarlier ? plan.earlier(p, t) : lateDays;
+  const days = [...past, ...plan.upcoming(p, t)];
+  const head = days.map((d) => `<div class="whead${d === t ? ' is-today' : ''}${d < t ? ' is-past' : ''}${lateDays.includes(d) ? ' is-late' : ''}">
+      <b>${lateDays.includes(d) ? WARN_ICON : ''}${esc(dayName(d))}</b><span>${esc(dateText(d))}</span>
+      <button class="icon-btn pday-add" type="button" data-add-day="${d}" title="Add to this day" aria-label="Add to ${esc(dayName(d))}">${PLUS_ICON}</button></div>`).join('');
+  const rows = [...plan.MEALS, 'notes'].map((meal) => `<div class="wlabel">${MEAL_ICONS[meal] || NOTE_ICON}<span>${plan.MEAL_NAMES[meal]}</span></div>${days.map((d) => `
+      <div class="wcell${d < t ? ' is-past' : ''}" data-drop="slot" data-day="${d}" data-meal="${meal}">${plan.on(p, d, meal).map((m) => planChip(m, 'meal')).join('')}</div>`).join('')}`).join('');
+  const nPast = plan.earlier(p, t).length;
+  return `<header class="week-head">
+      <h1>Plan</h1>
+      ${sideToggle('plan', 'data-page-tab')}
+      <p class="shop-status" id="plan-status" aria-live="polite">${shopStatus(S.plan)}</p>
+      ${cookingForHTML()}
+      ${nPast ? `<button class="btn btn-quiet btn-sm" type="button" data-act="earlier" aria-pressed="${Boolean(S.weekEarlier)}">${S.weekEarlier ? 'Hide earlier' : `Earlier days (${nPast})`}</button>` : ''}
+      <button class="btn btn-primary btn-sm" type="button" data-act="shop">${BASKET_ICON}Add to shopping list</button>
+      <button class="icon-btn" type="button" data-act="to-side" title="Show beside the recipes (P)" aria-label="Show the plan beside the recipes">${SHRINK_ICON}</button>
+    </header>
+    ${lateDays.length ? `<p class="plate">${WARN_ICON}<span>${lateDays.length === 1 ? `${esc(dayName(lateDays[0]))} has a meal` : `${lateDays.length} days have meals`} not ticked as cooked. Move them, or tick Cooked.</span></p>` : ''}
+    <div class="week">
+      <aside class="week-side">${savedHTML('week')}</aside>
+      <div class="week-scroll"><div class="week-grid" style="--days:${days.length}">
+        <div class="wcorner"></div>${head}
+        <button class="wghost" type="button" data-act="add-day" title="Add a day" aria-label="Add a day">${PLUS_ICON}</button>
+        ${rows}
+      </div></div>
+    </div>`;
+}
+
+/** Puts the plan in `root`. layout: panel (beside the recipes), week (full screen, wide) or page (phones). */
+function mountPlan(root, layout) {
+  root.innerHTML = `<section class="plan plan-${layout}" id="plan-root" data-layout="${layout}"></section>`;
+  wirePlan($('#plan-root', root));
+  drawPlan();
+  startListPolling();
+  if (S.live !== 'loading') S.plan.sync();
+}
+
+function drawPlan() {
+  const root = $('#plan-root');
+  if (!root || !S.plan) return;
+  // A redraw would take the dragged chip away and end the drag: it waits for the drop.
+  if (drag) { drawLater = true; return; }
+  const layout = root.dataset.layout;
+  const status = `<p class="shop-status" id="plan-status" aria-live="polite">${shopStatus(S.plan)}</p>`;
+  const shopBtn = `<button class="btn btn-primary pshop" type="button" data-act="shop">${BASKET_ICON}Add to shopping list</button>`;
+  if (layout === 'week') root.innerHTML = weekHTML();
+  else if (layout === 'panel') {
+    root.innerHTML = `<div class="side-head">${sideToggle('plan')}
+        <a class="icon-btn" href="#/plan" title="Full screen" aria-label="Open the plan full screen">${EXPAND_ICON}</a>
+        <button class="icon-btn" type="button" id="side-close" title="Close (P)" aria-label="Close the plan">${PANEL_ICON}</button></div>
+      ${status}${cookingForHTML()}${savedHTML(layout)}${daysHTML()}${shopBtn}`;
+  } else {
+    root.innerHTML = `<div class="shop-head"><h1>Plan</h1>${status}</div>
+      <div class="plan-bar">${cookingForHTML()}</div>
+      ${savedHTML(layout)}${daysHTML()}${shopBtn}`;
+  }
+  const renew = $('#shop-renew', root); if (renew) renew.onclick = () => signInFlow();
+  const retry = $('#shop-retry', root); if (retry) retry.onclick = () => S.plan.sync();
+}
+
+function wirePlan(root) {
+  // The empty meals of a day open when the pointer is on its name line, and
+  // stay open while it is anywhere on the day.
+  root.addEventListener('mouseover', (ev) => {
+    const day = ev.target.closest('.pday');
+    $$('.pday.is-open', root).forEach((d) => { if (d !== day) d.classList.remove('is-open'); });
+    if (day && ev.target.closest('.pday-head')) day.classList.add('is-open');
+  });
+  root.addEventListener('mouseleave', () => $$('.pday.is-open', root).forEach((d) => d.classList.remove('is-open')));
+  root.addEventListener('click', (ev) => {
+    const t = ev.target;
+    const chip = t.closest('.pchip');
+    if (chip) { planSheet(chip.dataset.src, chip.dataset.id); return; }
+    const add = t.closest('[data-add-day]');
+    if (add) { openAdd(add, add.dataset.addDay); return; }
+    const fold = t.closest('[data-fold-day]');
+    if (fold) {
+      const d = fold.dataset.foldDay;
+      planFolded.has(d) ? planFolded.delete(d) : planFolded.add(d);
+      // Days gone by are forgotten.
+      saved.set('planFolded', [...planFolded].filter((x) => x >= plan.addDays(plan.dayKey(), -14)));
+      drawPlan();
+      return;
+    }
+    const cook = t.closest('[data-cook]');
+    if (cook) { setCooking(Math.max(1, P().servings + Number(cook.dataset.cook))); return; }
+    const side = t.closest('[data-side-tab]');
+    if (side) { showSideTab(side.dataset.sideTab); return; }
+    const page = t.closest('[data-page-tab]');
+    if (page) { if (page.dataset.pageTab === 'list') go('#/list'); return; }
+    if (t.closest('#side-close')) { setSide('closed'); return; }
+    const act = t.closest('[data-act]')?.dataset.act;
+    if (act === 'add-day') addDay();
+    else if (act === 'shop') openPlanShop();
+    else if (act === 'earlier') { S.weekEarlier = !S.weekEarlier; drawPlan(); }
+    else if (act === 'to-side') { saved.set('sideTab', 'plan'); saved.set('sidePanel', 'open'); go(S.lastPage && !S.lastPage.startsWith('#/plan') ? S.lastPage : '#/'); }
+    else {
+      // An empty meal: add something there.
+      const cell = t.closest('.wcell, .pslot.is-empty');
+      if (cell) openAdd(cell, cell.dataset.day, cell.dataset.meal);
+    }
+  });
+}
+
+function onPlanChange() {
+  S.refreshSave?.();
+  drawPlan();
+  drawToday();
+  healPlan();
+}
+
+// A recipe moved or renamed somewhere else (the Cooklang app, Claude): find
+// it again by its title or file name, once per path.
+const healTried = new Set();
+function healPlan() {
+  if (S.live !== 'on' || !S.plan?.loaded) return;
+  const p = P();
+  for (const x of [...p.saved, ...p.meals]) {
+    if (!x.path || S.recipes.has(x.path) || healTried.has(x.path)) continue;
+    healTried.add(x.path);
+    const file = x.path.split('/').pop();
+    const hits = [...S.recipes.values()].filter((e) => (x.title && fold(e.title) === fold(x.title)) || e.file === file);
+    if (hits.length === 1) S.plan.do({ t: 'repath', from: x.path, to: hits[0].path, title: hits[0].title });
+  }
+}
+
+// ---- Today, on top of the home page
+
+function drawToday() {
+  const el = $('#today');
+  if (!el) return;
+  const t = plan.dayKey();
+  const xs = canPlan() ? plan.on(P(), t).filter((m) => m.kind !== 'item').sort(byDayMeal) : [];
+  if (!xs.length) { el.innerHTML = ''; return; }
+  const row = (m) => {
+    if (m.meal === 'notes') return `<li class="today-note">${NOTE_ICON}<span>${esc(m.title)}</span></li>`;
+    const e = m.path && S.recipes.get(m.path);
+    const title = m.kind === 'free' ? m.title : planTitleOf(m);
+    const first = m.kind === 'recipe' ? plan.cookMeal(P(), m) : m;
+    const cooked = isCooked(m);
+    const batch = m.kind === 'recipe' && first === m && plan.cookedOnce(P(), m) ? batchSize(m) : null;
+    const size = batch ? `${baseServings(e || {}) ? servingsText(batch.servings) : `${batch.x}×`} for ${batch.n} days` : m.kind === 'recipe' ? planSize(m) : '';
+    const sub = [plan.MEAL_NAMES[m.meal], size, first !== m ? `${first.cooked ? 'cooked' : 'from'} ${dayWord(first.day)}` : ''].filter(Boolean).join(' · ');
+    const cookable = m.kind === 'recipe' && e && first === m;
+    return `<li class="today-row${cooked ? ' is-cooked' : ''}">
+      ${planThumb(m)}
+      <span class="today-text">${e ? `<a href="#/r/${encPath(m.path)}">${esc(title)}</a>` : `<b>${esc(title)}</b>`}<small>${esc(sub)}</small></span>
+      ${cookable && !cooked ? `<a class="btn btn-primary btn-sm" href="${cookHref(m)}">${CHEF_ICON}<span>Cook</span></a>` : ''}
+      ${m.kind === 'recipe' ? `<button class="btn btn-quiet btn-sm today-done" type="button" data-done="${esc(m.id)}" aria-pressed="${cooked}">${CHECK_ICON}<span>${cooked ? 'Cooked' : 'Done'}</span></button>` : ''}
+    </li>`;
+  };
+  el.innerHTML = `<section class="today" aria-label="Today">
+    <div class="today-head"><h2>Today</h2><span>${esc(dateText(t))}</span><a class="link-btn" href="#/plan">Plan</a></div>
+    <ul class="today-list">${xs.map(row).join('')}</ul></section>`;
+  $$('[data-done]', el).forEach((b) => {
+    b.onclick = () => {
+      const m = P().meals.find((x) => x.id === b.dataset.done);
+      if (m) setCooked(m, !isCooked(m));
+    };
+  });
+}
+
+/** Cook mode at the planned size (all days of a batch), remembering which meal it is for. */
+function cookHref(x) {
+  const e = S.recipes.get(x.path);
+  const q = new URLSearchParams();
+  const size = x.day ? batchSize(x) : { servings: planServings(x), x: x.x || 1 };
+  if (e && baseServings(e)) { if (size.servings !== baseServings(e)) q.set('s', size.servings); }
+  else if (size.x !== 1) q.set('x', size.x);
+  q.set('plan', x.id);
+  return `#/cook/${encPath(x.path)}?${q}`;
+}
+
+// ---- the card behind a chip
+
+/** Also eat on: the days after the first one of a batch, as toggles. */
+function alsoDays(x) {
+  const all = plan.batchOf(P(), x);
+  const start = all[0].day;
+  return Array.from({ length: 7 }, (_, i) => plan.addDays(start, i + 1));
+}
+
+function toggleAlso(x, day) {
+  const p = P();
+  const all = plan.batchOf(p, x);
+  const there = all.find((m) => m.day === day);
+  if (there) {
+    if (there.id === x.id) return;
+    relinkList(there, true);
+    S.plan.do({ t: 'remove', id: there.id });
+    return;
+  }
+  const batch = x.batch || x.id;
+  if (!x.batch) S.plan.do({ t: 'edit', id: x.id, set: { batch } });
+  const nid = shop.newId();
+  S.plan.do({ t: 'place', entries: [{
+    id: nid, kind: 'recipe', path: x.path, title: planTitleOf(x), servings: x.servings ?? null, x: x.x ?? null,
+    day, meal: x.meal, batch, ...(x.each ? { each: true } : {}),
+  }] });
+  // On the shopping list already: the new day joins it.
+  if (planState(x) === 'list') linkList(x.path, [nid]);
+}
+
+function planSheet(src, id) {
+  const dlg = $('#meal');
+  const find = () => (src === 'meal' ? P().meals : P().saved).find((x) => x.id === id);
+  const close = () => { if (dlg.open) dlg.close(); };
+  const setSize = (x, set) => {
+    S.plan.do(src === 'saved' ? { t: 'editSaved', id, set } : { t: 'edit', id, set });
+    relinkList(find());
+  };
+  const acts = {
+    servings: (x, el) => setSize(x, { servings: Math.max(1, planServings(x) + Number(el.dataset.d)) }),
+    mult: (x, el) => setSize(x, { x: Number(el.dataset.m) }),
+    reset: (x) => setSize(x, { servings: null, x: null }),
+    cooked: (x) => setCooked(x, !isCooked(x)),
+    note: async (x) => {
+      const r = await askLine({ title: 'Note', body: 'A short note, like "double the sauce" or "for Ana".', label: 'Note', value: x.note || '' });
+      if (r) S.plan.do(src === 'saved' ? { t: 'editSaved', id, set: { note: r.text } } : { t: 'edit', id, set: { note: r.text } });
+      planSheet(src, id);
+    },
+    rename: async (x) => {
+      const r = await askLine({ title: 'Rename', label: 'Name', value: x.title });
+      if (r) S.plan.do({ t: 'edit', id, set: { title: r.text } });
+      planSheet(src, id);
+    },
+    also: (x, el) => toggleAlso(x, el.dataset.day),
+    each: (x) => { for (const m of plan.batchOf(P(), x)) S.plan.do({ t: 'edit', id: m.id, set: { each: !x.each } }); },
+    move: async (x) => {
+      close();
+      const to = await pickSlot({ title: `Move ${x.kind === 'recipe' ? planTitleOf(x) : x.title}`, day: x.day, meal: x.meal === 'notes' ? null : x.meal });
+      if (to) S.plan.do({ t: 'move', id, day: to.day, meal: x.meal === 'notes' ? 'notes' : to.meal });
+    },
+    plan: async (x) => {
+      close();
+      const to = await pickSlot({ title: `Plan ${planTitleOf(x)}`, meal: 'dinner' });
+      if (to) S.plan.do({ t: 'place', entries: [{ ...x, kind: 'recipe', day: to.day, meal: to.meal, fromSaved: x.id }] });
+    },
+    toSaved: (x) => { close(); relinkList(x, true); planUndo(`${planTitleOf(x)} is back in Saved.`, { t: 'toSaved', id }); },
+    remove: (x) => { close(); removeEntry(src, x); },
+  };
+  const render = () => {
+    const x = find();
+    if (!x) { close(); return null; }
+    const e = x.path ? S.recipes.get(x.path) : null;
+    const isRecipe = src === 'saved' || x.kind === 'recipe';
+    const base = e && baseServings(e);
+    const title = isRecipe ? planTitleOf(x) : x.title;
+    const where = src === 'saved' ? 'Saved' : `${dayName(x.day)}, ${dateText(x.day)}${x.meal === 'notes' ? '' : ` · ${plan.MEAL_NAMES[x.meal]}`}`;
+    const kindText = { free: 'Meal without a recipe', item: 'To buy', note: 'Note' }[x.kind] || '';
+    const row = (act, label, val = '') => `<button class="item-row" type="button" data-act="${act}"><span>${label}</span><span class="item-val">${val}${CHEVRON_ICON}</span></button>`;
+    const sw = (act, on, label) => `<button class="item-row" type="button" role="switch" aria-checked="${on}" data-act="${act}"><span>${label}</span><span class="switch" aria-hidden="true"></span></button>`;
+    const state = src === 'meal' ? planState(x) : '';
+    const stateText = { list: 'On the shopping list', bought: 'Bought' }[state];
+    const cooked = src === 'meal' && isCooked(x);
+    const first = src === 'meal' && isRecipe ? plan.cookMeal(P(), x) : x;
+    const out = [];
+    if (isGone(x) && isRecipe) out.push(`<p class="pwarn">${WARN_ICON}This recipe was deleted.</p>`);
+    if (src === 'meal' && isRecipe && x.day < plan.dayKey() && !cooked) out.push(`<p class="pwarn">${WARN_ICON}Not ticked as cooked on ${esc(dayWord(x.day))}. Move it, or tick Cooked.</p>`);
+    if (isRecipe && e && !cooked) {
+      const reset = ownSize(x) ? `<button class="link-btn preset" type="button" data-act="reset">Reset to ${base ? P().servings : '1×'}</button>` : '';
+      out.push(base
+        ? `<div class="item-row"><span>Servings${reset}</span><div class="scaler">
+            <button class="step-btn" type="button" data-act="servings" data-d="-1" aria-label="Fewer servings" ${planServings(x) <= 1 ? 'disabled' : ''}>−</button>
+            <output><b>${planServings(x)}</b></output>
+            <button class="step-btn" type="button" data-act="servings" data-d="1" aria-label="More servings">+</button></div></div>`
+        : `<div class="item-row"><span>Amount${reset}</span><div class="scaler">${[0.5, 1, 2, 3].map((m) => `<button class="mult" type="button" data-act="mult" data-m="${m}" aria-pressed="${(x.x || 1) === m}">${m === 0.5 ? '½' : m}×</button>`).join('')}</div></div>`);
+    }
+    if (src === 'meal' && x.kind === 'recipe') {
+      const when = first !== x ? ` <small>with ${esc(dayWord(first.day))}</small>` : first.cooked && first.cooked !== first.day ? ` <small>${esc(dayName(first.cooked))}</small>` : '';
+      out.push(sw('cooked', cooked, `Cooked${when}`));
+      // Also eat on: more days with the same recipe, cooked once or each day.
+      const all = plan.batchOf(P(), x);
+      const onDays = new Set(all.map((m) => m.day));
+      out.push(`<div class="palso"><span class="palso-h">Also eat on</span>
+        <div class="pdaypick" role="group" aria-label="Also eat on">${alsoDays(x).map((d) => `<button type="button" class="pdaybtn" data-act="also" data-day="${d}" aria-pressed="${onDays.has(d)}"${d === x.day ? ' disabled' : ''}><small>${esc(weekday(d))}</small><b>${plan.toDate(d).getDate()}</b></button>`).join('')}</div></div>`);
+      if (all.length > 1) {
+        const total = batchSize(x);
+        const w = dayWord(all[0].day);
+        out.push(sw('each', !x.each, `Cook once, ${['today', 'tomorrow', 'yesterday'].includes(w) ? w : `on ${esc(w)}`} <small>${x.each ? 'Off: each day is cooked on its own.' : `Cook mode makes ${base ? total.servings : `${total.x}×`} for ${all.length} days.`}</small>`));
+      }
+    }
+    if (isRecipe) out.push(row('note', 'Note', esc(x.note || 'Add')));
+    if (src === 'meal' && x.kind === 'recipe') out.push(row('move', 'Move'), row('toSaved', 'Back to Saved'));
+    else if (src === 'meal') out.push(...(x.kind === 'free' || x.kind === 'item' || x.kind === 'note' ? [row('rename', 'Rename')] : []), row('move', 'Move'));
+    else out.push(row('plan', 'Plan for a day'));
+    const cook = isRecipe && e && !cooked && !isGone(x) && first === x ? `<a class="btn btn-primary pcook-btn" href="${cookHref(x)}">${CHEF_ICON}Cook</a>` : '';
+    dlg.classList.toggle('is-wide', wideBrowse.matches);
+    dlg.setAttribute('aria-label', title);
+    dlg.innerHTML = `
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <button class="sheet-x item-x" type="button" data-close aria-label="Close">${CLOSE_ICON}</button>
+      <h2>${e ? `<a href="#/r/${encPath(x.path)}">${esc(title)}</a>` : esc(title)}</h2>
+      <p class="psheet-where">${esc([where, kindText, stateText].filter(Boolean).join(' · '))}</p>
+      ${out.join('')}
+      ${cook}
+      <button class="btn item-remove" type="button" data-act="remove">${TRASH_ICON}Remove</button>`;
+    $('[data-close]', dlg).onclick = close;
+    $$('a', dlg).forEach((a) => { a.addEventListener('click', close); });
+    $$('[data-act]', dlg).forEach((el) => { el.onclick = () => { const cur = find(); if (cur) acts[el.dataset.act](cur, el); if (dlg.open) render(); }; });
+    return x;
+  };
+  dlg.onclick = (ev) => { if (ev.target === dlg) close(); };
+  if (render() && !dlg.open) dlg.showModal();
+}
+
+// ---- small pickers
+
+const mealSeg = (on, { notes = false } = {}) => `<div class="seg pmeals" role="group" aria-label="Meal">${[...plan.MEALS, ...(notes ? ['notes'] : [])].map((m) => `<button type="button" data-meal="${m}" aria-pressed="${m === on}">${plan.MEAL_NAMES[m]}</button>`).join('')}</div>`;
+function wireSeg(dlg, sel, onPick) {
+  $$(sel, dlg).forEach((b) => {
+    b.onclick = () => { $$(sel, dlg).forEach((x) => x.setAttribute('aria-pressed', String(x === b))); onPick(b); };
+  });
+}
+
+/** The days you can pick: the plan's days, and at least the next 10. */
+function pickableDays(after = null) {
+  const t = plan.dayKey();
+  const set = new Set(plan.upcoming(P(), t));
+  for (let i = 0; i < 10; i++) set.add(plan.addDays(t, i));
+  return [...set].sort().filter((d) => !after || d >= after);
+}
+const dayBtn = (d, on, attr = 'data-day') => `<button type="button" class="pdaybtn" ${attr}="${d}" aria-pressed="${on}"><small>${esc(weekday(d))}</small><b>${plan.toDate(d).getDate()}</b></button>`;
+
+/** Asks for a day and a meal. Resolves with { day, meal } or null. */
+function pickSlot({ title, body = '', day = null, meal = 'dinner', after = null }) {
+  const dlg = $('#modal');
+  const days = pickableDays(after);
+  let d = days.includes(day) ? day : days[0];
+  let m = meal;
+  dlg.innerHTML = `<form method="dialog" class="pick-slot">
+    <h2>${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ''}
+    <div class="pdaypick" role="group" aria-label="Day">${days.map((x) => dayBtn(x, x === d)).join('')}</div>
+    ${meal ? mealSeg(m) : ''}
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary">Save</button></div>
+  </form>`;
+  const dayBtns = '.pdaypick .pdaybtn';
+  wireSeg(dlg, dayBtns, (b) => { d = b.dataset.day; });
+  wireSeg(dlg, '.pmeals button', (b) => { m = b.dataset.meal; });
+  $(`.pdaypick [aria-pressed="true"]`, dlg)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      resolve(dlg.returnValue === 'ok' ? { day: d, meal: m } : null);
+      dlg.returnValue = '';
+    };
+    dlg.showModal();
+  });
+}
+
+/** Asks for a line of text, with a meal when `meal` is given. Resolves with { text, meal } or null. */
+function askLine({ title, body = '', label, placeholder = '', value = '', meal = null }) {
+  const dlg = $('#modal');
+  let m = meal;
+  dlg.innerHTML = `<form method="dialog">
+    <h2>${esc(title)}</h2>${body ? `<p>${esc(body)}</p>` : ''}
+    <label class="field modal-field"><span>${esc(label)}</span>
+      <input id="ask-line" type="text" placeholder="${esc(placeholder)}" value="${esc(value)}" autocomplete="off" enterkeyhint="done">
+    </label>
+    ${meal ? mealSeg(m) : ''}
+    <div class="modal-actions"><button value="cancel" class="btn btn-quiet">Cancel</button><button value="ok" class="btn btn-primary">Save</button></div>
+  </form>`;
+  wireSeg(dlg, '.pmeals button', (b) => { m = b.dataset.meal; });
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      const v = $('#ask-line', dlg).value.trim();
+      resolve(dlg.returnValue === 'ok' ? { text: v, meal: m } : null);
+      dlg.returnValue = '';
+    };
+    dlg.showModal();
+    $('#ask-line', dlg).select();
+  });
+}
+
+/** The + on a day: a recipe, an ingredient, a meal without a recipe, or a note. */
+function openAdd(anchor, day, meal = null) {
+  const dlg = $('#choose');
+  const pop = wideBrowse.matches;
+  const opt = (pick, icon, title, sub) => `<button class="choose-opt" type="button" data-pick="${pick}">${icon}<span><b>${title}</b><small>${sub}</small></span></button>`;
+  dlg.setAttribute('aria-label', `Add to ${dayName(day)}`);
+  dlg.classList.toggle('is-pop', pop);
+  dlg.innerHTML = `<div class="choose-in">
+    ${pop ? '' : `<div class="sheet-grab" aria-hidden="true"></div>
+    <div class="choose-head"><div><b>Add to ${esc(dayName(day))}</b><small>${esc(dateText(day))}${meal ? `, ${plan.MEAL_NAMES[meal].toLowerCase()}` : ''}</small></div>
+      <button class="sheet-x" data-close aria-label="Close">${CLOSE_ICON}</button></div>`}
+    ${meal === 'notes' ? '' : opt('recipe', CHEF_ICON, 'Recipe', 'From Saved or all your recipes.')}
+    ${meal === 'notes' ? '' : opt('item', BASKET_ICON, 'Ingredient', 'Something to buy, like bread.')}
+    ${meal === 'notes' ? '' : opt('free', SALAD_ICON, 'Meal without a recipe', 'Eating out, or pizza from the freezer.')}
+    ${opt('note', NOTE_ICON, 'Note', 'Anything for the day.')}
+  </div>`;
+  const x = $('[data-close]', dlg);
+  if (x) x.onclick = () => dlg.close();
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  $$('[data-pick]', dlg).forEach((b) => {
+    b.onclick = async () => {
+      dlg.close();
+      const kind = b.dataset.pick;
+      const m = meal && meal !== 'notes' ? meal : 'dinner';
+      if (kind === 'recipe') { pickRecipe(day, m); return; }
+      if (kind === 'note') {
+        const r = await askLine({ title: `Note for ${dayName(day)}`, label: 'Note', placeholder: 'Ana comes for dinner' });
+        if (r?.text) S.plan.do({ t: 'place', entries: [{ id: shop.newId(), kind: 'note', title: r.text, day, meal: 'notes' }] });
+        return;
+      }
+      if (kind === 'item') {
+        const r = await askLine({ title: 'Add an ingredient', body: 'It goes on the shopping list with the rest of the day.', label: 'Ingredient', placeholder: 'Bread, or 2 kg potatoes', meal: m });
+        const it = r?.text ? shop.parseItem(r.text) : null;
+        if (it?.name) S.plan.do({ t: 'place', entries: [{ id: shop.newId(), kind: 'item', title: it.name, n: it.n ?? null, unit: it.unit || '', day, meal: r.meal }] });
+        return;
+      }
+      const r = await askLine({ title: 'Meal without a recipe', label: 'What is it?', placeholder: 'Eating out', meal: m });
+      if (r?.text) S.plan.do({ t: 'place', entries: [{ id: shop.newId(), kind: 'free', title: r.text, day, meal: r.meal }] });
+    };
+  });
+  dlg.style.left = dlg.style.top = '';
+  dlg.showModal();
+  if (pop) {
+    const r = anchor.getBoundingClientRect();
+    const w = dlg.offsetWidth, h = dlg.offsetHeight;
+    dlg.style.left = `${Math.max(16, Math.min(r.left, innerWidth - w - 16))}px`;
+    dlg.style.top = `${r.bottom + 8 + h > innerHeight - 8 ? Math.max(8, r.top - 8 - h) : r.bottom + 8}px`;
+  }
+}
+
+/** A recipe for a day: Saved first, then a search through all recipes. */
+function pickRecipe(day, meal) {
+  const dlg = $('#planpick');
+  let m = meal;
+  let q = '';
+  dlg.innerHTML = `
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="sheet-head"><h2>${esc(dayName(day))}, ${esc(dateText(day))}</h2>
+      <button class="sheet-x" type="button" data-close aria-label="Close">${CLOSE_ICON}</button></div>
+    <div class="ppick-top">
+      <label class="search"><span class="sr">Search</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+        <input id="ppick-q" type="search" placeholder="Search recipes" autocomplete="off"></label>
+      ${mealSeg(m)}
+    </div>
+    <div class="sheet-body" id="ppick-list"></div>`;
+  const draw = () => {
+    const f = fold(q);
+    const savedNow = P().saved.filter((s) => !f || fold(planTitleOf(s)).includes(f));
+    const all = [...S.recipes.values()].filter((e) => !f || e.search.includes(f)).sort((a, b) => collator.compare(a.title, b.title)).slice(0, 60);
+    const row = (e, attrs, sub) => `<button class="ppick-row" type="button" ${attrs}>${planThumb({ path: e.path, title: e.title })}<span><b>${esc(e.title)}</b><small>${esc(sub)}</small></span></button>`;
+    $('#ppick-list', dlg).innerHTML = `
+      ${savedNow.length ? `<h3 class="ppick-h">Saved</h3>${savedNow.map((s) => row({ path: s.path, title: planTitleOf(s) }, `data-saved="${esc(s.id)}"`, planSize(s))).join('')}` : ''}
+      <h3 class="ppick-h">${f ? 'Recipes' : 'All recipes'}</h3>
+      ${all.length ? all.map((e) => row(e, `data-path="${esc(e.path)}"`, folderLabel(e.folder))).join('') : '<p class="muted">No recipes match.</p>'}`;
+    $$('[data-saved]', dlg).forEach((b) => { b.onclick = () => { dropOn({ dataset: { drop: 'slot', day, meal: m } }, { src: 'saved', id: b.dataset.saved }, false); dlg.close(); }; });
+    $$('[data-path]', dlg).forEach((b) => { b.onclick = () => { placeRecipe(b.dataset.path, day, m); dlg.close(); }; });
+  };
+  $('[data-close]', dlg).onclick = () => dlg.close();
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  $('#ppick-q', dlg).addEventListener('input', debounce((ev) => { q = ev.target.value; draw(); }, 100));
+  wireSeg(dlg, '.pmeals button', (b) => { m = b.dataset.meal; });
+  draw();
+  dlg.showModal();
+}
+
+/** Holding a recipe card on a phone: tap where it goes. */
+function dropSheet(path) {
+  const e = S.recipes.get(path);
+  if (!e) return;
+  const dlg = $('#choose');
+  dlg.classList.remove('is-pop');
+  dlg.setAttribute('aria-label', `Plan ${e.title}`);
+  const days = plan.upcoming(P());
+  dlg.innerHTML = `<div class="choose-in">
+    <div class="sheet-grab" aria-hidden="true"></div>
+    <div class="choose-head"><div><b>${esc(e.title)}</b><small>Tap where it goes.</small></div>
+      <button class="sheet-x" data-close aria-label="Close">${CLOSE_ICON}</button></div>
+    <button class="choose-opt is-main" type="button" data-to="saved">${BOOKMARK_ICON}<span><b>Saved</b><small>To make some time. Pick a day later.</small></span></button>
+    <div class="pdrop-days">${days.map((d) => `<div class="pdrop-day"><span><b>${esc(dayName(d))}</b><small>${esc(dateText(d))}</small></span>
+      <div class="pdrop-meals">${plan.MEALS.map((m) => `<button type="button" data-day="${d}" data-meal="${m}" title="${plan.MEAL_NAMES[m]}" aria-label="${esc(`${dayName(d)}, ${plan.MEAL_NAMES[m]}`)}">${MEAL_ICONS[m]}</button>`).join('')}</div></div>`).join('')}</div>
+  </div>`;
+  $('[data-close]', dlg).onclick = () => dlg.close();
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  $$('[data-to]', dlg).forEach((b) => { b.onclick = () => { dlg.close(); saveRecipe(path); }; });
+  $$('[data-meal]', dlg).forEach((b) => {
+    b.onclick = () => {
+      dlg.close();
+      planUndo(`${e.title} is on ${dayWord(b.dataset.day)}, ${plan.MEAL_NAMES[b.dataset.meal].toLowerCase()}.`,
+        { t: 'place', entries: [{ id: shop.newId(), kind: 'recipe', path, title: e.title, day: b.dataset.day, meal: b.dataset.meal }] });
+    };
+  });
+  dlg.style.left = dlg.style.top = '';
+  dlg.showModal();
+}
+
+// ---- shopping for the plan
+
+/**
+ * The check before the shopping list: pick the days (tap the first, then
+ * the last), untick what you have. Cooked, bought and already listed meals,
+ * meals without a recipe and Saved add nothing.
+ */
+function openPlanShop() {
+  if (!S.shop) return;
+  const dlg = $('#planpick');
+  const t = plan.dayKey();
+  const days = plan.upcoming(P(), t);
+  const st = { from: t, to: plan.addDays(t, 2), next: 'from', off: new Set() };
+  const candidates = () => {
+    const p = P();
+    return p.meals.filter((m) => m.day >= st.from && m.day <= st.to && plan.shops(p, m)).sort(byDayMeal).map((m) => ({ x: m, src: 'meal' }));
+  };
+  // Can go on the list: not there yet, not bought, not deleted.
+  const can = (x) => !planState(x) && !(x.kind === 'recipe' && !S.recipes.has(x.path));
+  const draw = () => {
+    // The same recipe on more days is one row, with its days below it.
+    const groups = new Map();
+    for (const { x } of candidates()) {
+      const k = x.kind === 'item' ? `item:${fold(x.title)}` : x.path;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(x);
+    }
+    let skipped = 0;
+    let n = 0;
+    const html = [...groups.values()].map((xs) => {
+      const x = xs[0];
+      const open = xs.filter(can);
+      skipped += xs.length - open.length;
+      const on = open.filter((m) => !st.off.has(m.id));
+      if (on.length) n++;
+      const title = x.kind === 'item' ? x.title : planTitleOf(x);
+      const size = (m) => (m.kind === 'item' ? (m.n != null ? fmtAmount(m.n, m.unit || '') : '') : planBubble(m));
+      const total = x.kind === 'recipe' && on.length > 1 ? (baseServings(S.recipes.get(x.path) || {}) ? servingsText(on.reduce((t, m) => t + planServings(m), 0)) : `${on.reduce((t, m) => t + (m.x || 1), 0)}×`) : '';
+      const days = xs.map((m) => {
+        const state = planState(m);
+        const why = state === 'list' ? 'on the list' : state === 'bought' ? 'bought' : !can(m) ? 'deleted' : '';
+        return `<li${why ? ' class="is-off"' : ''}><span>${esc(weekday(m.day))} ${esc(plan.MEAL_NAMES[m.meal].toLowerCase())}</span><b>${esc(size(m))}</b>${why ? `<small>${why}</small>` : ''}</li>`;
+      }).join('');
+      return `<li><label class="pshop-row${open.length ? '' : ' is-off'}">
+        <input type="checkbox" class="tick" data-ids="${esc(open.map((m) => m.id).join(' '))}" ${on.length ? 'checked' : ''} ${open.length ? '' : 'disabled'}>
+        ${planThumb(x)}<span><b>${esc(title)}</b>${total ? `<small>${esc(total)} together</small>` : ''}<ul class="pshop-when">${days}</ul></span></label></li>`;
+    });
+    const range = st.from === st.to ? dateText(st.from) : `${dateText(st.from)} to ${dateText(st.to)}`;
+    dlg.innerHTML = `
+      <div class="sheet-grab" aria-hidden="true"></div>
+      <div class="sheet-head"><h2>Add to shopping list</h2>
+        <button class="sheet-x" type="button" data-close aria-label="Close">${CLOSE_ICON}</button></div>
+      <div class="pshop-top">
+        <p class="muted">${st.next === 'to' ? 'Now tap the last day.' : 'Tap the first and the last day.'} <b>${esc(range)}</b></p>
+        <div class="pdaypick pshop-days" role="group" aria-label="Days">${days.map((d) => `<button type="button" class="pdaybtn${d >= st.from && d <= st.to ? ' is-in' : ''}" data-day="${d}" aria-pressed="${d === st.from || d === st.to}"><small>${esc(weekday(d))}</small><b>${plan.toDate(d).getDate()}</b></button>`).join('')}</div>
+        <div class="pquick">
+          <button type="button" class="opt" data-range="3" aria-pressed="${st.from === t && st.to === plan.addDays(t, 2)}">Next 3 days</button>
+          <button type="button" class="opt" data-range="all" aria-pressed="${st.from === t && st.to === days[days.length - 1]}">Whole plan</button>
+        </div>
+      </div>
+      <div class="sheet-body">${html.length ? `<ul class="pshop-list">${html.join('')}</ul>` : '<p class="muted pshop-none">Nothing to buy for these days.</p>'}
+        ${skipped ? `<p class="muted pshop-skip">${skipped} ${skipped === 1 ? 'meal is' : 'meals are'} already on the list, bought or deleted.</p>` : ''}
+        <p class="muted pshop-skip">Cooked meals, meals without a recipe and Saved add nothing.</p></div>
+      <div class="sheet-foot"><button class="link-btn" type="button" data-close>Cancel</button>
+        <button class="btn btn-primary" type="button" id="pshop-go" ${n ? '' : 'disabled'}>Add ${n || ''} to shopping list</button></div>`;
+    $$('[data-close]', dlg).forEach((b) => { b.onclick = () => dlg.close(); });
+    $$('.pshop-days .pdaybtn', dlg).forEach((b) => {
+      b.onclick = () => {
+        const d = b.dataset.day;
+        if (st.next === 'from' || d < st.from) { st.from = d; st.to = d; st.next = 'to'; }
+        else { st.to = d; st.next = 'from'; }
+        draw();
+      };
+    });
+    $$('[data-range]', dlg).forEach((b) => {
+      b.onclick = () => {
+        const r = b.dataset.range;
+        st.from = t;
+        st.to = r === '3' ? plan.addDays(t, 2) : days[days.length - 1];
+        st.next = 'from';
+        draw();
+      };
+    });
+    $$('.pshop-list .tick', dlg).forEach((b) => {
+      b.onchange = () => { for (const id of b.dataset.ids.split(' ')) b.checked ? st.off.delete(id) : st.off.add(id); draw(); };
+    });
+    $('#pshop-go', dlg).onclick = () => {
+      const picked = candidates().map(({ x }) => x).filter((x) => can(x) && !st.off.has(x.id));
+      const before = S.shop.list;
+      addPlanToList(picked);
+      dlg.close();
+      toast(`Added ${n} to your shopping list.`, { label: 'Undo', run: () => S.shop.do({ t: 'restore', list: before }) });
+    };
+  };
+  dlg.onclick = (ev) => { if (ev.target === dlg) dlg.close(); };
+  draw();
+  dlg.showModal();
+}
+
+// ---- dragging: recipe cards and chips onto Saved and the meals of a day,
+// or into the bin that shows at the bottom while a chip is dragged
+
+let drag = null;
+const cardPath = (a) => a.getAttribute('href').replace(/^#\/r\//, '').split('/').map(decodeURIComponent).join('/');
+const clearOver = () => $$('.is-over').forEach((el) => el.classList.remove('is-over'));
+// A finger dragging a chip (phones): the chip follows it, the page holds still.
+const planTouch = { on: false };
+let drawLater = false;
+
+function startDrag(d, later = false) {
+  drag = d;
+  const show = () => {
+    if (drag !== d) return;
+    document.body.classList.add('is-dragging');
+    document.body.classList.toggle('drag-chip', d.src !== 'recipe');
+  };
+  // The empty meals open when a drag starts. Chrome drops a mouse drag when
+  // the page moves inside dragstart, so then they open a moment later.
+  if (later) setTimeout(show, 0); else show();
+}
+
+// Over the plan, near the top or bottom of the window or of the side panel,
+// it scrolls along with a dragged thing: faster the closer it gets. Over the
+// recipes it stays put.
+const EDGE = 140;
+let edge = null;
+function edgeScroll(x, y) {
+  const at = document.elementFromPoint(x, y);
+  if (!at?.closest('.side, #plan-root')) { edge = null; return; }
+  const el = at.closest('.side');
+  const box = el ? el.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+  const bottom = Math.min(box.bottom, innerHeight) - (document.body.classList.contains('has-tabbar') ? 70 : 0);
+  const top = Math.max(box.top, 0);
+  const speed = y < top + EDGE ? -Math.ceil(((top + EDGE - y) / EDGE) * 16) : y > bottom - EDGE ? Math.ceil(((y - bottom + EDGE) / EDGE) * 16) : 0;
+  const was = edge;
+  edge = speed ? { el, speed } : null;
+  if (edge && !was) requestAnimationFrame(function step() {
+    if (!edge || !drag) { edge = null; return; }
+    (edge.el || window).scrollBy(0, edge.speed);
+    requestAnimationFrame(step);
+  });
+}
+function endDrag() {
+  drag = null;
+  document.body.classList.remove('is-dragging', 'drag-chip');
+  clearOver();
+  if (drawLater) { drawLater = false; drawPlan(); }
+}
+function markOver(t) {
+  if (!t) { clearOver(); return; }
+  if (!t.classList.contains('is-over')) { clearOver(); t.classList.add('is-over'); }
+}
+
+function initPlanDrag() {
+  const bin = document.createElement('div');
+  bin.className = 'pbin';
+  bin.dataset.drop = 'trash';
+  bin.innerHTML = `${TRASH_ICON}<span>Drop here to remove</span>`;
+  document.body.append(bin);
+
+  let lastPointer = 'mouse';
+  document.addEventListener('pointerdown', (ev) => { lastPointer = ev.pointerType; }, true);
+  document.addEventListener('dragstart', (ev) => {
+    if (!canPlan() && !(S.shop && drive.wasSignedIn())) return;
+    const el = ev.target.closest?.('.pchip[data-id], a.card');
+    if (!el) return;
+    // Fingers drag chips the hand-made way below.
+    if (lastPointer !== 'mouse' && el.matches('.pchip')) { ev.preventDefault(); return; }
+    startDrag(el.matches('a.card') ? { src: 'recipe', path: cardPath(el) } : { src: el.dataset.src, id: el.dataset.id }, true);
+    ev.dataTransfer.effectAllowed = 'copyMove';
+    if (drag.src !== 'recipe') ev.dataTransfer.setData('text/plain', el.textContent.trim());
+  });
+  document.addEventListener('dragend', endDrag);
+  // Entering a target has to be accepted too, or the drop may not come.
+  document.addEventListener('dragenter', (ev) => {
+    const t = drag && ev.target.closest?.('[data-drop]');
+    if (t && !(t.dataset.drop === 'trash' && drag.src === 'recipe')) ev.preventDefault();
+  });
+  document.addEventListener('dragover', (ev) => {
+    if (!drag) return;
+    edgeScroll(ev.clientX, ev.clientY);
+    const t = ev.target.closest?.('[data-drop]');
+    if (!t || (t.dataset.drop === 'trash' && drag.src === 'recipe')) { clearOver(); return; }
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = t.dataset.drop === 'trash' ? 'move' : drag.src === 'recipe' || ev.altKey ? 'copy' : 'move';
+    markOver(t);
+    // Over the closed rail, the plan opens so the drop can go on into a day.
+    if (t.dataset.drop === 'rail') showSideTab('plan');
+  });
+  document.addEventListener('drop', (ev) => {
+    if (!drag) return;
+    const t = ev.target.closest?.('[data-drop]');
+    if (!t) return;
+    ev.preventDefault();
+    const d = drag;
+    endDrag();
+    dropOn(t, d, ev.altKey);
+  });
+
+  // Fingers: hold a recipe card to pick where it goes, hold a chip to drag it.
+  let press = null;
+  let ghost = null;
+  const targetAt = (x, y) => {
+    const t = document.elementFromPoint(x, y)?.closest('[data-drop]');
+    return t && t.dataset.drop !== 'rail' ? t : null;
+  };
+
+  const lift = (p) => {
+    const r = p.el.getBoundingClientRect();
+    ghost = p.el.cloneNode(true);
+    ghost.classList.add('pghost-chip');
+    ghost.style.width = `${r.width}px`;
+    p.dx = p.x - r.left; p.dy = p.y - r.top;
+    ghost.style.transform = `translate(${r.left}px, ${r.top}px)`;
+    document.body.append(ghost);
+    p.el.classList.add('is-lifted');
+    planTouch.on = true;
+    startDrag({ src: p.el.dataset.src, id: p.el.dataset.id });
+  };
+  const drop = (cancel) => {
+    const p = press;
+    press = null;
+    clearTimeout(p?.timer);
+    if (!planTouch.on) return;
+    planTouch.on = false;
+    edge = null;
+    ghost?.remove();
+    ghost = null;
+    p.el.classList.remove('is-lifted');
+    const t = cancel ? null : targetAt(p.lx, p.ly);
+    const d = drag;
+    endDrag();
+    if (t) dropOn(t, d, false);
+  };
+  document.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'mouse' || !canPlan()) return;
+    const card = ev.target.closest('.grid a.card');
+    const chip = ev.target.closest('.pchip[data-id]');
+    if (!card && !chip) return;
+    press = { el: chip || card, chip: Boolean(chip), x: ev.clientX, y: ev.clientY, lx: ev.clientX, ly: ev.clientY, fired: false };
+    press.timer = setTimeout(() => {
+      press.fired = true;
+      navigator.vibrate?.(12);
+      if (press.chip) lift(press);
+      else dropSheet(cardPath(press.el));
+    }, press.chip ? 380 : 480);
+  });
+  document.addEventListener('pointermove', (ev) => {
+    if (!press) return;
+    if (!press.fired) {
+      if (Math.hypot(ev.clientX - press.x, ev.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; }
+      return;
+    }
+    if (!planTouch.on) return;
+    press.lx = ev.clientX; press.ly = ev.clientY;
+    ghost.style.transform = `translate(${ev.clientX - press.dx}px, ${ev.clientY - press.dy}px)`;
+    const t = targetAt(ev.clientX, ev.clientY);
+    markOver(t);
+    // Near the top or bottom the page scrolls along, but not over the bin.
+    if (t?.dataset.drop === 'trash') edge = null; else edgeScroll(ev.clientX, ev.clientY);
+  });
+  // While a chip is held, the page must not scroll under the finger.
+  document.addEventListener('touchmove', (ev) => { if (planTouch.on) ev.preventDefault(); }, { passive: false });
+  document.addEventListener('pointerup', () => {
+    if (!press) return;
+    if (planTouch.on) { press.done = true; const el = press.el; drop(false); swallow = el; return; }
+    if (!press.fired) { clearTimeout(press.timer); press = null; }
+  });
+  document.addEventListener('pointercancel', () => { if (planTouch.on) drop(true); else if (press) { clearTimeout(press.timer); press = null; } });
+  // The click after a hold does not open the card or the recipe.
+  let swallow = null;
+  document.addEventListener('click', (ev) => {
+    if ((press?.fired && press.el.contains(ev.target)) || (swallow && swallow.contains(ev.target))) { ev.preventDefault(); ev.stopPropagation(); }
+    press = null;
+    swallow = null;
+  }, true);
+  document.addEventListener('contextmenu', (ev) => { if (canPlan() && ev.target.closest?.('.grid a.card, .pchip') && (press || planTouch.on)) ev.preventDefault(); });
+}
+
+async function showPlanPage() {
+  document.body.dataset.view = 'plan';
+  document.title = `Plan | ${S.config.title || 'Recipes'}`;
+  if (!canPlan()) {
+    $('#main').innerHTML = `<div class="empty"><h1>Sign in to plan meals</h1><p>The plan is saved in Google Drive, so it is the same on your phone and your computer.</p>${S.plan ? '<button class="btn btn-primary" id="signin2">Sign in with Google</button>' : ''}</div>`;
+    const b = $('#signin2'); if (b) b.onclick = () => signInFlow();
+    return;
+  }
+  await initParser();
+  S.parserReady = true;
+  if (parseHash().path !== '/plan') return;
+  mountPlan($('#main'), wide.matches ? 'week' : 'page');
+}
+
 // ---------------------------------------------------------------- side panel (wide screens)
 
 // On a wide screen the list has three sizes: a slim rail, a panel beside the
@@ -2023,6 +3274,7 @@ const SHRINK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 
 /** From the full list page back to the panel beside the page you came from. */
 function listToSide() {
   saved.set('sidePanel', 'open');
+  saved.set('sideTab', 'list');
   go(S.lastPage || '#/');
 }
 const wide = window.matchMedia('(min-width: 1100px)');
@@ -2030,7 +3282,7 @@ const wide = window.matchMedia('(min-width: 1100px)');
 function sideMode() {
   if (!wide.matches || !S.shop || !drive.wasSignedIn()) return 'off';
   const { path } = parseHash();
-  if (path === '/list' || path.startsWith('/cook/')) return 'off';
+  if (path === '/list' || path === '/plan' || path.startsWith('/cook/')) return 'off';
   if (path === '/new' || path.startsWith('/edit/')) return 'rail';
   return saved.get('sidePanel', 'closed') === 'open' ? 'open' : 'rail';
 }
@@ -2040,24 +3292,43 @@ function setSide(state) {
   renderSide();
 }
 
+// The open panel shows the plan or the shopping list.
+const sideTab = () => (saved.get('sideTab', 'list') === 'plan' && canPlan() ? 'plan' : 'list');
+function showSideTab(tab) {
+  if (sideTab() === tab && sideMode() === 'open') return;
+  saved.set('sideTab', tab);
+  saved.set('sidePanel', 'open');
+  renderSide();
+}
+
 function renderSide() {
   const el = $('#side');
   const mode = sideMode();
   document.body.classList.toggle('has-side', mode !== 'off');
   document.body.classList.toggle('side-open', mode === 'open');
   el.hidden = mode === 'off';
+  el.setAttribute('aria-label', mode === 'open' && sideTab() === 'plan' ? 'Plan' : canPlan() ? 'Plan and shopping list' : 'Shopping list');
   if (mode === 'open') {
-    if (!$('.shop-panel', el)) mountList(el, true);
+    const tab = sideTab();
+    const there = tab === 'plan' ? $('#plan-root', el) : $('.shop-panel', el);
+    if (!there) { if (tab === 'plan') mountPlan(el, 'panel'); else mountList(el, true); }
     else if (!listPoll) startListPolling(); // a page change stopped it
     return;
   }
-  if ($('.shop-panel', el)) stopListPolling();
+  if ($('.shop-panel', el) || $('#plan-root', el)) stopListPolling();
   if (mode === 'off') { el.innerHTML = ''; return; }
   const n = toBuyCount();
-  el.innerHTML = `<button class="rail" id="rail" title="Shopping list (L)" aria-label="Open the shopping list${n ? `, ${n} to buy` : ''}">
-    ${PANEL_ICON}${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>
-  </button>`;
-  $('#rail').onclick = () => setSide('open');
+  el.innerHTML = `<div class="rail">
+    <button class="rail-top" id="rail-open" type="button" title="Open the panel" aria-label="Open the panel">${PANEL_ICON}</button>
+    ${canPlan() ? `<button class="rail-btn" id="rail-plan" type="button" data-drop="rail" title="Plan (P)" aria-label="Open the plan">${CAL_ICON}<span class="rail-label">Plan</span></button>` : ''}
+    <button class="rail-btn" id="rail" type="button" data-drop="list" title="Shopping list (L)" aria-label="Open the shopping list${n ? `, ${n} to buy` : ''}">
+      ${BASKET_ICON}${n ? `<span class="badge">${n}</span>` : ''}<span class="rail-label">Shopping list</span>
+    </button></div>`;
+  $('#rail').onclick = () => showSideTab('list');
+  // The toggle on top opens the panel as it was last: the plan or the list.
+  $('#rail-open').onclick = () => showSideTab(sideTab());
+  const rp = $('#rail-plan');
+  if (rp) rp.onclick = () => showSideTab('plan');
 }
 
 // ---------------------------------------------------------------- tab bar (phones and narrow windows)
@@ -2080,30 +3351,37 @@ function renderTabbar() {
   el.hidden = !show;
   if (!show) { el.innerHTML = ''; return; }
   const n = toBuyCount();
-  const tab = (href, icon, label, on, extra = '') => `<a class="tab" ${href.startsWith('#') ? `href="${href}"` : href}${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span>${extra}</a>`;
+  const tab = (href, icon, label, on, extra = '', cls = '') => `<a class="tab${cls}" ${href.startsWith('#') ? `href="${href}"` : href}${on ? ' aria-current="page"' : ''}>${icon}<span>${label}</span>${extra}</a>`;
   el.innerHTML = [
-    tab('#/', CHEF_ICON, 'Recipes', path !== '/list'),
-    tab('#/list', BASKET_ICON, 'Shopping list', path === '/list', n ? `<span class="badge" aria-label="${n} to buy">${n}</span>` : ''),
+    tab('#/', CHEF_ICON, 'Recipes', path !== '/list' && path !== '/plan'),
+    tab('#/plan', CAL_ICON, 'Plan', path === '/plan'),
+    tab('#/list', BASKET_ICON, 'List', path === '/list', n ? `<span class="badge" aria-label="${n} to buy">${n}</span>` : ''),
     tab(claudeLink(), PLUS_ICON, 'New', false),
   ].join('');
 }
 
 function initSide() {
-  wide.addEventListener('change', () => { renderSide(); renderTabbar(); });
+  wide.addEventListener('change', () => { renderSide(); renderTabbar(); if (parseHash().path === '/plan') showPlanPage(); });
+  // L for the list and P for the plan: open it, switch to it, or close it.
   document.addEventListener('keydown', (ev) => {
-    if (ev.key.toLowerCase() !== 'l' || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    if (ev.target.closest('input, textarea, select, [contenteditable]') || $('#modal').open) return;
-    if (wide.matches && parseHash().path === '/list' && $('#to-side')) { ev.preventDefault(); listToSide(); return; }
+    const k = ev.key.toLowerCase();
+    if ((k !== 'l' && k !== 'p') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.target.closest('input, textarea, select, [contenteditable]') || $$('dialog[open]').length) return;
+    const want = k === 'p' ? 'plan' : 'list';
+    if (want === 'plan' && !canPlan()) return;
+    const path = parseHash().path;
+    if (wide.matches && path === '/list' && $('#to-side')) { ev.preventDefault(); if (want === 'list') listToSide(); else go('#/plan'); return; }
+    if (wide.matches && path === '/plan') { ev.preventDefault(); if (want === 'plan') $('[data-act="to-side"]')?.click(); else go('#/list'); return; }
     if (sideMode() === 'off') return;
     ev.preventDefault();
-    setSide(sideMode() === 'open' ? 'closed' : 'open');
+    if (sideMode() === 'open' && sideTab() === want) setSide('closed');
+    else showSideTab(want);
   });
 }
 
 const RENEW_SOON = 10 * 60_000;
 
-function shopStatus() {
-  const s = S.shop;
+function shopStatus(s = S.shop) {
   const waiting = s.pendingCount ? ` ${s.pendingCount === 1 ? 'One change waits' : `${s.pendingCount} changes wait`} on this device.` : '';
   // Offer the renewal before the hour runs out, so it does not end halfway
   // through the shop. The list checks again every 15 seconds.
@@ -2207,6 +3485,9 @@ function aisleView(b) {
   return out.join('');
 }
 
+// Recipes folded away in the list by recipe, per device.
+const listFolded = new Set(saved.get('listFolded', []));
+
 function recipeView(b) {
   // Ticked lines go to the end of their recipe, as In the basket does by aisle.
   const lastIfChecked = (list) => [...list.filter((l) => !l.group.checked), ...list.filter((l) => l.group.checked)];
@@ -2219,8 +3500,11 @@ function recipeView(b) {
       total: l.total, recipeId: r.id,
       note: [toBuy(l.group) ? '' : 'probably have', l.optional ? 'optional' : ''].filter(Boolean).join(', '),
     }));
-    return `<section class="shop-recipe">
-      <div class="shop-recipe-head"><h2>${title}</h2><span>${esc(size)}</span><button class="link-btn" data-remove-recipe="${esc(r.id)}">Remove</button></div>
+    const folded = listFolded.has(r.path);
+    const left = r.lines.filter((l) => toBuy(l.group) && !l.group.checked).length;
+    return `<section class="shop-recipe${folded ? ' is-folded' : ''}">
+      <div class="shop-recipe-head"><button class="pday-fold" type="button" data-fold-recipe="${esc(r.path)}" aria-expanded="${!folded}" title="${folded ? 'Show' : 'Hide'} its ingredients">${CHEVRON_ICON}</button>
+        <h2>${title}</h2><span>${esc([size, folded && left ? `${left} to buy` : ''].filter(Boolean).join(' · '))}</span><button class="link-btn" data-remove-recipe="${esc(r.id)}">Remove</button></div>
       ${only}${r.missing ? '<p class="muted">This recipe is no longer in your collection.</p>'
         : rows.length ? `<ul class="shop-list">${rows.join('')}</ul>` : '<p class="muted">Nothing left to buy.</p>'}
     </section>`;
@@ -2243,13 +3527,13 @@ function clearChecked() {
   const b = built();
   const keys = new Set([...b.groups.values()].filter((g) => g.checked).map((g) => g.key));
   if (!keys.size) return;
-  undoable(`Cleared ${keys.size} checked ${keys.size === 1 ? 'item' : 'items'}.`, {
-    t: 'removeKeys',
-    keys: [...keys],
-    itemIds: b.manual.filter((it) => keys.has(it.key)).map((it) => it.id),
-    // Recipes with nothing left to buy drop off the list.
-    dropRecipes: b.recipes.filter((r) => !r.missing && r.lines.every((l) => keys.has(l.key) || !toBuy(l.group))).map((r) => r.id),
-  });
+  const itemIds = b.manual.filter((it) => keys.has(it.key)).map((it) => it.id);
+  // Recipes with nothing left to buy drop off the list.
+  const drop = b.recipes.filter((r) => !r.missing && r.lines.every((l) => keys.has(l.key) || !toBuy(l.group)));
+  // The plan remembers they were bought.
+  const bought = [...itemIds, ...drop.flatMap((r) => r.planIds || [])];
+  if (bought.length && canPlan()) S.plan.do({ t: 'bought', ids: bought });
+  undoable(`Cleared ${keys.size} checked ${keys.size === 1 ? 'item' : 'items'}.`, { t: 'removeKeys', keys: [...keys], itemIds, dropRecipes: drop.map((r) => r.id) });
 }
 
 const CHEVRON_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>';
@@ -3165,6 +4449,8 @@ async function showEditor(rawPath) {
       entry.driveId = meta.id;
       entry.driveImage = driveImage;
       S.recipes.set(newPath, entry);
+      // Moved or renamed: the plan follows it.
+      if (!isNew && newPath !== e.path) S.plan?.do({ t: 'repath', from: e.path, to: newPath, title: entry.title });
       if (S.drive) {
         S.drive.files.set(`${newPath}.cook`, meta);
         if (!isNew && newPath !== e.path) S.drive.files.delete(`${e.path}.cook`);

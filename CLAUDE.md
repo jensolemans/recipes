@@ -59,6 +59,23 @@ folders use the same files.
     editor keeps it a rail and the list page hides it. Narrower than that,
     signed in, a bottom tab bar (`#tabbar`: Recipes, Shopping list, New)
     takes its place, with Add to shopping list pinned above it on recipes.
+  - `plan.js`: the signed-in meal plan, stored in Drive as `config/plan.json`
+    and synced with the same engine as the list (`createSync` in shopping.js).
+    Two parts: Saved (to make some time, a recipe page's bookmark, never
+    shopped) and the calendar (recipes, meals without a recipe, ingredients,
+    notes per day and meal; shopping buys the calendar). Days run from today
+    to 3 ahead or the last planned day. `servings: null` follows "Cooking
+    for" (a chip's bubble is filled when it does not); bought or cooked meals
+    keep their size when it changes. "Also eat on" puts a recipe on more days
+    as one `batch`, cooked once on its first day unless `each`. A meal counts
+    as cooked only from cook mode's Finish or Done; a past day with an
+    unticked recipe stays in view with a warning. Plan entries on the
+    shopping list are linked by `planIds` on the list recipe. It shows in the
+    side panel (calendar and basket toggle, P and L), at `#/plan` (a week on
+    wide screens; Saved over the calendar on phones) and as Today on the home
+    page. Chips drag onto Saved, a meal, or the bin that shows at the bottom
+    (hold to drag on phones). On phones the tab bar is Recipes, Plan, List,
+    New, and holding a recipe card opens where it goes.
   - `sw.js` + `manifest.webmanifest` + `icons/`: installable home-screen app
     that opens without a connection. The service worker serves the site from
     its cache and refreshes it in the background (network first on

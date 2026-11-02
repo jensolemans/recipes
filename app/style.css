@@ -713,6 +713,9 @@ body[data-view="list"] .icon-link { background: var(--soft); }
 .shop-recipe-head h2 a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .shop-recipe-head > span { color: var(--muted); font-size: 14px; white-space: nowrap; }
 .shop-recipe .muted { margin: 10px 0 0; }
+.shop-recipe-head { align-items: center; }
+.shop-recipe-head .pday-fold { margin-left: -6px; }
+.shop-recipe.is-folded > :not(.shop-recipe-head) { display: none; }
 .shop-parts { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
 .parts-list { list-style: none; margin: 0 0 20px; padding: 0; max-height: 52vh; overflow: auto; }
 .parts-list li + li { border-top: 1px solid var(--line); }
@@ -765,19 +768,28 @@ body.has-side .toast { width: min(640px, calc(100% - var(--side-w) - 32px)); }
   background: var(--card); border-left: 1px solid var(--line);
   overflow-y: auto; overscroll-behavior: contain;
 }
-.rail {
-  width: 100%; height: 100%; border: 0; background: none; cursor: pointer; color: var(--ink);
-  display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 0 16px;
+/* closed: a slim rail with the plan above the list, each one button */
+.rail { height: 100%; display: flex; flex-direction: column; }
+.rail-top { display: grid; place-items: center; padding: 14px 0 4px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.rail-top:hover { color: var(--ink); }
+.rail-btn {
+  border: 0; background: none; cursor: pointer; color: var(--ink); padding: 14px 0 16px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
 }
-.rail:hover { background: var(--soft); }
+/* each button only as tall as its content, a line below it; the rest of the rail stays empty */
+.rail-btn { border-bottom: 1px solid var(--line); }
+.rail-btn:hover { background: var(--soft); }
+.rail-btn.is-over { background: var(--mark); }
 .rail svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; flex: none; }
-.rail svg:first-child { width: 20px; height: 20px; color: var(--muted); transform: scaleX(-1); margin: -6px 0 10px; }
+.rail-top svg { width: 20px; height: 20px; transform: scaleX(-1); }
 .rail .badge { position: static; }
 .rail-label { writing-mode: vertical-rl; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
 .shop-panel { padding: 14px 16px 24px; }
 .side-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .side-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
-.side-head .shop-count { margin: 0 auto 0 6px; }
+.side-head .shop-count { margin: 0 0 0 6px; }
+/* full screen, then the panel toggle, on the right */
+.side-head > a.icon-btn { margin-left: auto; }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 50%; border: 0; background: none; color: var(--muted);
   display: grid; place-items: center; cursor: pointer;
@@ -798,6 +810,307 @@ body.has-side .toast { width: min(640px, calc(100% - var(--side-w) - 32px)); }
 .shop-panel .shop-empty { padding: 32px 0 8px; }
 .shop-panel .shop-empty p { font-size: 15px; }
 .shop-panel .shop-clear { margin-top: 24px; min-height: 44px; font-size: 14px; }
+
+/* ---------- meal plan ---------- */
+/* Plan or List at the top of the panel, the week and the full list page: a calendar and a basket */
+.side-tabs { margin: 0; flex: none; }
+.side-tabs button { display: grid; place-items: center; padding: 6px 14px; }
+.side-tabs svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.list-tabs { display: none; }
+@media (min-width: 1100px) { .list-tabs { display: inline-flex; margin-left: 16px; } .shop-head { justify-content: flex-start; } }
+
+.plan .seg, .pmeals { margin: 0; }
+.plan .seg span { font-weight: 400; opacity: .8; }
+.plan-panel { padding: 14px 16px 24px; }
+.plan .shop-status { font-size: 13px; margin: 2px 0 8px; }
+.plan .shop-status:empty { display: none; }
+.pcook { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 10px; font-size: 14px; font-weight: 600; }
+.pcook .scaler { min-height: 38px; padding: 3px; }
+.pcook .scaler output { min-width: 34px; padding: 0 2px; }
+.pcook .scaler output b { font-size: 16px; }
+.pcook .step-btn { width: 30px; height: 30px; font-size: 18px; }
+
+/* Saved and the calendar */
+.psaved { border-top: 1px solid var(--line); padding: 4px 0 10px; border-radius: 4px; }
+.pcal { border-top: 1px solid var(--line); }
+.pcal > .psec-head { margin-bottom: 0; }
+.psec-head { display: flex; align-items: baseline; gap: 6px; margin: 8px 0 8px; }
+.psec-head h3, .psome summary, .pearlier summary {
+  margin: 0; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+}
+.psec-head span, .psome summary span, .pearlier summary span { color: var(--muted); font-size: 13px; }
+.psome, .pearlier { border-top: 1px solid var(--line); border-radius: 4px; }
+.psome summary, .pearlier summary { display: flex; align-items: center; gap: 6px; padding: 10px 0; cursor: pointer; list-style: none; }
+.psome summary::-webkit-details-marker, .pearlier summary::-webkit-details-marker { display: none; }
+.psome summary::after, .pearlier summary::after {
+  content: ''; width: 7px; height: 7px; margin-left: auto; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-2px, -2px);
+}
+.psome[open] summary::after, .pearlier[open] summary::after { transform: rotate(-135deg); }
+.psome summary svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.psome[open] { padding-bottom: 10px; }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.phint { margin: 0; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 13px; }
+
+/* a chip: photo, name, then its state and the servings bubble on the right */
+.pchip {
+  display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; padding: 4px 6px 4px 4px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: inherit; font: inherit; text-align: left; cursor: grab;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+.pchip:hover { border-color: var(--muted); }
+.pchip:active { cursor: grabbing; }
+.pthumb { width: 32px; height: 32px; flex: none; border-radius: 7px; overflow: hidden; background: var(--soft); display: grid; place-items: center; }
+.pthumb img { width: 100%; height: 100%; object-fit: cover; }
+.pthumb .ph { font-size: 15px; opacity: .8; }
+.pthumb svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pchip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pchip-text b, .pchip-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pchip-text b { font-size: 15px; font-weight: 600; line-height: 1.25; }
+.pchip-text small { font-size: 12px; line-height: 1.3; color: var(--muted); }
+.pchip-mark { flex: none; color: var(--muted); display: grid; }
+.pchip-mark svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* servings: quiet when it follows Cooking for, filled when set by hand */
+.pbubble {
+  flex: none; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; display: grid; place-items: center;
+  border: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.pbubble.is-own { background: var(--strong); border-color: var(--strong); color: var(--on-strong); }
+.pchip.is-cooked .pchip-text, .pchip.is-cooked .pthumb { opacity: .55; }
+.pchip.is-cooked b { text-decoration: line-through; }
+.pchip.is-cooked .pchip-mark { color: var(--ink); }
+.pchip.is-later { border-style: dashed; }
+.pchip.is-gone { border-color: var(--danger); }
+.pchip.is-gone small, .pchip.is-gone .pchip-mark { color: var(--danger); }
+.pchip.kind-note { border-color: transparent; background: var(--soft); }
+.pchip.kind-note .pthumb { width: 20px; height: 20px; background: none; }
+.pchip.kind-note b { font-weight: 400; white-space: normal; }
+.pchip.kind-note small { display: none; }
+
+/* the days: four meals each, an icon and the meal's name faded while it is empty */
+.pdays { list-style: none; margin: 0; padding: 0; }
+.pday { border-top: 1px solid var(--line); padding: 8px 0 10px; }
+.pdays > .pday:first-child { border-top: 0; }
+/* a day gone by with a meal not ticked as cooked */
+.pday.is-late { margin: 6px 0 8px; padding: 6px 10px 10px; border: 1.5px dashed var(--accent); border-radius: 12px; }
+.pday.is-late + .pday { border-top: 0; }
+.plate { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 6px; font-size: 13px; line-height: 1.4; color: var(--ink); }
+.plate svg { width: 16px; height: 16px; flex: none; margin-top: 1px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.week-head + .plate { margin: -8px 0 14px; }
+.pday-head { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.pday-head b { font-size: 16px; }
+.pday-head span { color: var(--muted); font-size: 13px; }
+.pday.is-today .pday-head b { font-weight: 800; }
+.pday-add { margin-left: auto; width: 30px; height: 30px; }
+.pslot { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; padding: 3px 0; border-radius: 8px; }
+.pslot-icon { padding-top: 10px; color: var(--muted); display: grid; justify-items: center; }
+.pslot-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pslot-items { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pslot-name { padding: 0 10px; font-size: 13px; color: var(--muted); opacity: .7; }
+.pslot.is-empty { cursor: pointer; display: none; }
+body.is-dragging .pslot.is-empty { display: grid; }
+/* opened from the day's name line (app.js), so nothing moves under the pointer on its way to a meal */
+.pday.is-open .pslot.is-empty { display: grid; }
+.pday.is-open .pday-empty { display: none; }
+body.is-dragging .pday-empty { display: none; }
+.pday-empty { margin: 0 0 0 30px; font-size: 13px; color: var(--muted); }
+.pday.is-folded .pday-body { display: none; }
+.pday-fold {
+  width: 24px; height: 24px; margin-left: -4px; display: grid; place-items: center; flex: none;
+  border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer;
+}
+.pday-fold:hover { background: var(--soft); color: var(--ink); }
+.pday-fold svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transition: transform .15s; }
+.pday-fold[aria-expanded="false"] svg { transform: none; }
+.pslot.is-empty .pslot-items { min-height: 38px; align-items: center; border: 1.5px dashed var(--line); border-radius: 10px; }
+.pslot.is-empty:hover .pslot-items { border-color: var(--muted); }
+.pslot.is-empty .pslot-icon { opacity: .6; }
+.pnotes { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.pghost {
+  width: 100%; min-height: 48px; margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1.5px dashed var(--line); border-radius: 12px; background: none; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
+}
+.pghost:hover { color: var(--ink); border-color: var(--muted); }
+.pghost svg, .pshop svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pshop { width: 100%; margin-top: 16px; min-height: 48px; }
+
+/* where a drop goes */
+.is-over { background: var(--mark); outline: 2px dashed var(--accent); outline-offset: -2px; }
+.pslot.is-over { background: none; outline: 0; }
+.pslot.is-over .pslot-items { background: var(--mark); border-color: var(--accent); border-style: dashed; }
+
+/* the bin at the bottom while a chip is dragged */
+.pbin {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 60; transform: translate(-50%, 20px);
+  width: min(420px, calc(100vw - 32px)); min-height: 64px; display: flex; align-items: center; justify-content: center; gap: 8px;
+  border: 2px dashed var(--accent); border-radius: 16px; background: var(--card); color: var(--accent); font-weight: 600;
+  opacity: 0; pointer-events: none; transition: opacity .15s, transform .15s;
+}
+.pbin > * { pointer-events: none; }
+.pbin svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+body.has-tabbar .pbin { bottom: calc(var(--tabbar-h) + 12px); }
+body.drag-chip .pbin { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+.pbin.is-over { outline: 0; background: var(--mark); }
+/* a chip under a finger */
+.pghost-chip { position: fixed; left: 0; top: 0; z-index: 70; pointer-events: none; box-shadow: 0 10px 28px rgba(0, 0, 0, .25); opacity: .95; }
+.pchip.is-lifted { opacity: .35; }
+
+/* phones: the Plan tab, Saved on top and the calendar below in one scroll */
+.plan-page { max-width: 720px; margin: 0 auto; }
+.plan-bar { margin: 0 0 4px; }
+.plan-page .psaved .pchips { flex-direction: column; }
+.psaved .pchip, .pslot-items .pchip { width: 100%; }
+.plan-page .psaved .pchip { padding: 6px 12px 6px 6px; }
+.plan-page .psaved .pthumb { width: 44px; height: 44px; border-radius: 9px; }
+
+/* wide screens: the plan full screen, as a real week */
+body[data-view="plan"] main { max-width: none; }
+.week-head { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; margin: 4px 0 18px; }
+.week-head h1 { margin: 0; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-size: clamp(36px, 4vw, 52px); }
+.week-head .shop-status { flex: 1; min-width: 140px; margin: 0; }
+.week-head .pcook { padding: 0; }
+.week-head .btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.week { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 20px; align-items: start; }
+.week-side { position: sticky; top: 12px; }
+.week-side .pchips { flex-direction: column; }
+.week-side .pchip { width: 100%; }
+.week-scroll { overflow-x: auto; padding-bottom: 8px; }
+.week-grid {
+  display: grid; grid-template-columns: 104px repeat(var(--days), minmax(150px, 1fr)) 56px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden;
+}
+.week-grid > * { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); min-width: 0; }
+.wcorner { background: var(--card); }
+.whead { position: relative; padding: 10px 34px 8px 10px; display: flex; flex-direction: column; border-radius: 0; }
+.whead b { font-size: 15px; }
+.whead span { color: var(--muted); font-size: 13px; }
+.whead.is-today { box-shadow: inset 0 3px 0 var(--strong); }
+.whead.is-today b { font-weight: 800; }
+.whead .pday-add { position: absolute; top: 8px; right: 4px; }
+.wlabel { padding: 10px; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.wlabel svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.whead b svg { width: 15px; height: 15px; margin-right: 4px; vertical-align: -2px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.whead.is-late { box-shadow: inset 0 3px 0 var(--accent); }
+.wcell { padding: 6px; min-height: 64px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; border-radius: 0; }
+.wcell:hover { background: var(--paper); }
+.wcell .pchip { width: 100%; }
+/* two lines for a long name in the week */
+.wcell .pchip-text b { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.wcell.is-past, .whead.is-past { background: var(--paper); }
+.wghost {
+  grid-column: -2 / -1; grid-row: 1 / span 6; border: 0; border-bottom: 0 !important; background: none; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer;
+}
+.wghost:hover { background: var(--soft); color: var(--ink); }
+.wghost svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+/* Today, on top of the home page */
+.today { margin: 14px 0 4px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.today-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.today-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+.today-head span { color: var(--muted); font-size: 14px; }
+.today-head .link-btn { margin-left: auto; }
+.today-list { list-style: none; margin: 0; padding: 0; }
+.today-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.today-row:first-child { border-top: 0; }
+.today-row .pthumb { width: 48px; height: 48px; border-radius: 10px; }
+.today-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.today-text a, .today-text b { font-size: 16px; font-weight: 700; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-text a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.today-text small { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.today-text small svg { width: 14px; height: 14px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.today-row .btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.today-row.is-cooked .today-text { opacity: .55; }
+.today-row.is-cooked .today-text a, .today-row.is-cooked .today-text b { text-decoration: line-through; }
+.today-done[aria-pressed="true"] { background: var(--soft); }
+.today-note { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.today-note svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 559px) {
+  .today-row .btn { width: 40px; padding: 0; }
+  .today-row .btn span { display: none; }
+}
+
+/* the card behind a chip (the shopping item card's look) */
+.item h2 a { color: inherit; text-decoration: none; }
+.item h2 a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.psheet-where { margin: -8px 0 14px; color: var(--muted); font-size: 14px; }
+.pwarn { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: var(--mark); font-size: 14px; line-height: 1.4; }
+.item .pwarn svg { color: var(--ink); }
+.item-row small { color: var(--muted); font-size: 14px; margin-left: 6px; }
+.item-row .scaler { min-height: 40px; padding: 3px; }
+.item-row .scaler output { min-width: 40px; }
+.item-row .step-btn { width: 32px; height: 32px; font-size: 19px; }
+.pcook-btn { width: 100%; min-height: 48px; margin-top: 12px; font-size: 16px; }
+.preset { margin-left: 10px; font-size: 14px; }
+.item-row small { display: block; margin: 2px 0 0; }
+.palso { padding: 12px 0 0; border-bottom: 1px solid var(--line); }
+.palso-h { display: block; margin-bottom: 8px; font-size: 15px; }
+.palso .pdaypick { margin: 0; }
+.palso .pdaybtn { width: 46px; min-height: 50px; }
+.palso .pdaybtn:disabled { opacity: 1; cursor: default; }
+.item .pcook-btn svg { width: 20px; height: 20px; }
+
+/* pickers: a strip of days, the meal, quick patterns */
+.pdaypick { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; margin: 0 0 12px; scrollbar-width: thin; }
+.pdaypick.is-wrap { flex-wrap: wrap; overflow: visible; }
+.pdaybtn {
+  flex: none; width: 50px; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: inherit; font: inherit; cursor: pointer;
+}
+.pdaybtn small { font-size: 12px; color: var(--muted); line-height: 1.2; }
+.pdaybtn b { font-size: 18px; line-height: 1.2; }
+.pdaybtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.pdaybtn.is-in { background: var(--soft); border-color: var(--soft); }
+.pdaybtn[aria-pressed="true"] { background: var(--strong); border-color: var(--strong); color: var(--on-strong); }
+.pdaybtn[aria-pressed="true"] small { color: inherit; opacity: .8; }
+.modal .pmeals { display: flex; margin-bottom: 20px; }
+.pmeals button { flex: 1; padding: 7px 4px; }
+.pquick { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+
+/* a recipe for a day, and the check before the shopping list */
+@media (min-width: 701px) { .planpick { width: min(580px, calc(100vw - 64px)); height: min(700px, calc(100vh - 64px)); } }
+.ppick-top, .pshop-top { flex: none; padding: 8px 16px 6px; display: flex; flex-direction: column; gap: 10px; }
+@media (min-width: 701px) { .ppick-top, .pshop-top { padding: 8px 24px 6px; } .planpick .sheet-body { padding: 4px 24px 16px; } }
+.ppick-top .search { min-height: 44px; }
+.ppick-top .pmeals { display: flex; }
+.ppick-h { margin: 14px 0 2px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.ppick-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 0; border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.ppick-row:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.ppick-row .pthumb, .pshop-row .pthumb { width: 44px; height: 44px; border-radius: 9px; }
+.ppick-row > span:last-child, .pshop-row > span:last-child { min-width: 0; display: flex; flex-direction: column; }
+.ppick-row small, .pshop-row small { color: var(--muted); font-size: 13px; }
+.pshop-top p { margin: 0; font-size: 14px; }
+.pshop-top p b { color: var(--ink); }
+.pshop-top .pdaypick, .pshop-top .pquick { margin: 0; }
+.pshop-list { list-style: none; margin: 0; padding: 0; }
+.pshop-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.pshop-row .tick { width: 22px; height: 22px; flex: none; align-self: flex-start; margin-top: 11px; }
+.pshop-row .pthumb { align-self: flex-start; }
+.pshop-when { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pshop-when li { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+.pshop-when li span { min-width: 92px; }
+.pshop-when li b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.pshop-when li.is-off b { color: var(--muted); }
+.pshop-when li small { font-size: 12px; }
+.pshop-row.is-off { opacity: .5; cursor: default; }
+.pshop-skip { font-size: 13px; margin: 10px 0 0; }
+.pshop-none { padding: 16px 0 0; margin: 0; }
+
+/* phones: holding a recipe card opens where it goes */
+.pdrop-days { display: flex; flex-direction: column; max-height: 44vh; overflow-y: auto; overscroll-behavior: contain; }
+.pdrop-day { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.pdrop-day > span { width: 88px; flex: none; display: flex; flex-direction: column; line-height: 1.25; }
+.pdrop-day small { color: var(--muted); font-size: 13px; }
+.pdrop-meals { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.pdrop-meals button {
+  min-height: 40px; padding: 0 2px; border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  color: inherit; font: inherit; cursor: pointer; display: grid; place-items: center;
+}
+.pdrop-meals svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.pdrop-meals button:active { background: var(--strong); color: var(--on-strong); }
+@media (hover: none) { body.can-plan .grid a.card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; } }
 
 /* ---------- tab bar (narrow screens, signed in) ---------- */
 body.has-tabbar { --tabbar-h: calc(61px + env(safe-area-inset-bottom)); padding-bottom: var(--tabbar-h); }

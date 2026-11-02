@@ -255,7 +255,7 @@ export function apply(list, op) {
   switch (op.t) {
     case 'addRecipe': {
       l.recipes = l.recipes.filter((r) => r.path !== op.path);
-      l.recipes.push({ id: op.id, path: op.path, title: op.title, servings: op.servings ?? null, factor: op.factor, parts: op.parts || null, removed: [], added: op.at });
+      l.recipes.push({ id: op.id, path: op.path, title: op.title, servings: op.servings ?? null, factor: op.factor, parts: op.parts || null, removed: [], added: op.at, ...(op.planIds ? { planIds: op.planIds } : {}), ...(op.extra ? { extra: op.extra } : {}) });
       l.checked = l.checked.filter((k) => !(op.keys || []).includes(k));
       break;
     }
@@ -294,12 +294,13 @@ export function apply(list, op) {
 /**
  * Keeps the list in step with Drive. `drive` is the drive.js module;
  * `configFolder()` resolves to the id of the config folder; `onChange()` is
- * called whenever the list or the sync status changes.
+ * called whenever the list or the sync status changes. The meal plan syncs
+ * the same way with its own `file`, `storeKey`, `clean` and `apply`.
  */
-export function createSync({ drive, configFolder, onChange }) {
-  const saved = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); } catch { return null; } })() || {};
+export function createSync({ drive, configFolder, onChange, file = 'shopping_list.json', storeKey = STORE_KEY, clean = cleanList, apply: applyOp = apply }) {
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(storeKey) || 'null'); } catch { return null; } })() || {};
   const st = {
-    base: cleanList(saved.base),
+    base: clean(saved.base),
     md5: saved.md5 || null,
     fileId: saved.fileId || null,
     pending: Array.isArray(saved.pending) ? saved.pending : [],
@@ -311,7 +312,7 @@ export function createSync({ drive, configFolder, onChange }) {
   let timer = null;
 
   const persist = () => {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify({ base: st.base, md5: st.md5, fileId: st.fileId, pending: st.pending })); } catch { /* private mode */ }
+    try { localStorage.setItem(storeKey, JSON.stringify({ base: st.base, md5: st.md5, fileId: st.fileId, pending: st.pending })); } catch { /* private mode */ }
   };
 
   // The list is read on every render; work it out again only after a change
@@ -320,7 +321,7 @@ export function createSync({ drive, configFolder, onChange }) {
   const current = () => {
     const last = st.pending[st.pending.length - 1] || null;
     if (memo.base !== st.base || memo.n !== st.pending.length || memo.last !== last) {
-      memo = { base: st.base, n: st.pending.length, last, list: st.pending.reduce(apply, st.base) };
+      memo = { base: st.base, n: st.pending.length, last, list: st.pending.reduce(applyOp, st.base) };
     }
     return memo.list;
   };
@@ -334,25 +335,25 @@ export function createSync({ drive, configFolder, onChange }) {
       if (st.fileId) {
         let meta = null;
         try { meta = await drive.getMeta(st.fileId); } catch (e) { if (e.code !== 404) throw e; }
-        if (!meta || meta.trashed) { st.fileId = null; st.md5 = null; st.base = emptyList(); }
+        if (!meta || meta.trashed) { st.fileId = null; st.md5 = null; st.base = clean(null); }
         else if (meta.md5Checksum !== st.md5) {
           const text = await drive.readText(st.fileId);
           let parsed = null;
           try { parsed = JSON.parse(text); } catch { /* broken file: start again */ }
-          st.base = cleanList(parsed);
+          st.base = clean(parsed);
           st.md5 = meta.md5Checksum;
         }
       }
       st.loaded = true;
       if (st.pending.length) {
         const n = st.pending.length;
-        const next = st.pending.slice(0, n).reduce(apply, st.base);
+        const next = st.pending.slice(0, n).reduce(applyOp, st.base);
         const body = JSON.stringify({ ...next, updated: new Date().toISOString() }, null, 1);
         let meta;
         if (st.fileId) meta = await drive.updateContent(st.fileId, body, 'application/json');
         else {
           const folder = await configFolder();
-          meta = await drive.create('shopping_list.json', folder, body, 'application/json');
+          meta = await drive.create(file, folder, body, 'application/json');
         }
         st.fileId = meta.id;
         st.md5 = meta.md5Checksum;
@@ -389,6 +390,6 @@ export function createSync({ drive, configFolder, onChange }) {
       timer = setTimeout(sync, 400);
     },
     sync,
-    reset() { try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ } },
+    reset() { try { localStorage.removeItem(storeKey); } catch { /* ignore */ } },
   };
 }

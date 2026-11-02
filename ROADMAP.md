@@ -109,51 +109,34 @@ Mostly front end, quick wins, used every week.
 
 The planning features, built the same way as the shopping list.
 
-- [ ] **Meal planner.** Save recipes you want to cook, put them on days if
+- [x] **Meal planner.** Save recipes you want to cook, put them on days if
   you like, shop it in one go and cook from Today. Signed in only; friends
   never see Plan. Design and mockups: the "Recipe planner" page
   (https://claude.ai/artifact/LPkwtHPAf7aphED45axHaM).
   *Mealime, Plan to Eat, Paprika, Samsung Food.*
-  - **Saved.** The shortlist of recipes you mean to cook, the one used most:
-    in the shop you pick from it and shop for those. A Save button on the
-    recipe page puts a recipe straight in, no questions. Someday is a
-    wishlist below it that is never shopped. "Cooking for" sets the default
-    servings; each recipe can have its own servings and a note. A recipe
-    leaves Saved when it is put on a day. (Names not final.)
-  - **Planned.** The days, for planning further: a few days, a week, or two.
-    Days run from today to 3 days ahead, or to the last planned day; a ghost
-    day with a + at the end adds one more empty day each time. Past days fold
-    into Earlier. A meal (Breakfast, Lunch, Dinner, Snack) can hold several
-    recipes; the row just gets longer. The + on a day adds a loose
-    ingredient, a meal without a recipe ("Eating out") or a note.
-  - **Side panel with three states**, like the shopping list's: hidden (an
-    icon in the top bar), split on the right, full screen; buttons move
-    between them. In every state it shows the plan or the shopping list, with
-    a toggle. Full screen shows the days as a real week. On phones, Plan and
-    List are tabs in the bottom bar with New (+) in the middle, and the Plan
-    tab is the full screen view. Drag recipe cards into Saved and, where the
-    browser allows, on into a day in one move.
-  - **Meals.** Servings, leftovers (any later day and meal, or Freezer,
-    added to the servings cooked), cook again (every day, weekdays, picked
-    days), move, remove. Alt drag copies on desktop. Cooked early (Tuesday
-    for Wednesday) shows as cooked on its own day.
-  - **Cooking is ticked on purpose.** A meal only counts as cooked from cook
-    mode or Done. One that is not cooked moves on to the next day by itself,
-    with a warning icon ("moved from Tue"), and you sort the plan yourself.
-  - **Shopping.** A check page first, with a range of days to shop for,
-    recipes to untick, totals and Probably have. Someday, leftovers and
-    eating out add nothing, lines already on the list are not added twice.
-    Changing servings or removing a meal updates the list (bought lines
-    stay); removing a recipe on the list puts it back to planned.
-  - **Today** on top of the home page (phone and desktop): the day's note
-    and meals with Cook or Done.
-  - **States.** Saved or planned, In list, Bought (all its lines ticked),
-    Cooked.
-  - **Storage.** `config/plan.json` in Drive (Saved, Cooking for, days),
-    with the shopping list's offline queue. Meals point to recipe paths:
-    moving a recipe in the app or through the connector updates the plan;
-    a path that is gone is looked up by name, else the meal shows "This
-    recipe was deleted".
+  - **Saved.** Recipes to make some time, never shopped. A Save button on
+    the recipe page puts a recipe straight in. "Cooking for" sets the
+    default servings; a recipe can have its own (a filled bubble) and a
+    note, with Reset. It leaves Saved when it is put on a day.
+  - **Calendar.** Today to 3 days ahead, or to the last planned day; a ghost
+    day adds one more. Breakfast, Lunch, Dinner and Snack with icons, empty
+    ones only on hover or while dragging. A day folds away. The + on a day
+    adds a recipe, an ingredient, a meal without a recipe or a note.
+  - **Side panel** (a calendar and a basket toggle, P and L), full screen
+    as a real week, and on phones a Plan tab with Saved over the calendar
+    (Recipes, Plan, List, New). Drag cards and meals onto Saved, a meal,
+    the shopping list or a bin; on phones hold to drag.
+  - **Meals.** Servings, Also eat on (more days as one batch, cooked once
+    or each day), move, back to Saved, remove. Alt drag copies on desktop.
+  - **Cooking is ticked on purpose.** Only cook mode or Done count. A past
+    day with an uncooked recipe stays in view with a warning.
+  - **Shopping.** A check page with a range of days, one row per recipe with
+    its days; cooked, bought, listed and meals without a recipe add nothing.
+    Changing servings or removing a meal updates the list.
+  - **Today** on top of the home page with Cook or Done.
+  - **States.** Saved, planned, on the list, bought, cooked.
+  - **Storage.** `config/plan.json` in Drive with the shopping list's
+    offline queue. Moved recipes are followed, deleted ones say so.
 - [ ] **Plans through Claude.** Connector tools to read and change the plan
   (`read_plan`, `plan_recipe`, `move_meal`), so a saved import can go
   straight into Saved and "plan me five dinners from my collection,
