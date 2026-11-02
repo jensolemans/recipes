@@ -12,7 +12,11 @@ fixes it. Bigger features go in `ROADMAP.md`.
 - Per step images are supported by cooklang but not supported by this tool anywhere. I don't have any of these recipes anywhere (yet) but could be very usefull to add.
 - On desktop the site stays quite centered in the middle. Looks OK. But could be useful to use more of the screen and not have the big black sides on a 16:9 monitor.
 - Lets add to the cooklang skill that the user should be prompted in the chat if the recipe is very close to being vegan or vegetarian. If its only because of some ansjovis fillets in the sauce that makes it meat, and otherwise the whole dish is vegan, give them a suggestion to leave it out or replace to make it vegan. Same with if it's only because of a chicken stock cube, suggest that they replace it in the recipe with veg stock to make it vegetarian/vegan.
-- Idea to add a "muliplayer" mode where i can invite guests to add recipes and ingredients to my plan and shopping cart and with their icon behind the items they added so you can see who did what? 
+- Idea to add a "muliplayer" mode where i can invite guests to add recipes and ingredients to my plan and shopping cart and with their icon behind the items they added so you can see who did what?
+- Put the chane photo also under the edit card.
+- Put all the action buttons on a recipe (cook, save, edit, ...) in one row and only use the ... button if it were to spill onto the next rown and hide the items that won't fit under the ...
+- Add an overview something to the shopping cart so you can quickly see what recipes and servings you are shopping for. Handy with big lists.
+- Narrow the Google Drive access. The site and the connector ask for access to the whole Drive, while they only need the recipe folder. Look into a narrower scope (or a separate Google account that only holds the recipe folder) without breaking files made by the Cooklang app and the desktop folder.
 
 ## Fixed
 - When checking off an item in the shopping list somethimes it gets lined out in place and sometimes moved to the bottom? Why the descrepency. I prefer the move to bottom everywhere. Or am i just wrong. Good to maybe add an animation and sound here? Because the item disappears so fast it is confusing sometimes.
