@@ -5,8 +5,9 @@
 // offline, or when it does not answer, the editor comes first.
 // A bottom sheet on phones, a small menu by the button on bigger screens.
 
-import { CHECK_ICON, CLOSE_ICON, FILE_ICON, OFFLINE_ICON, SPARK_ICON } from './icons.js';
+import { CHECK_ICON, CLOSE_ICON, FILE_ICON, OFFLINE_ICON, PHOTO_ICON, SPARK_ICON } from './icons.js';
 import { parseHash } from './app.js';
+import { editorView } from './lazy.js';
 import { S } from './state.js';
 import { closeMenus } from './ui.js';
 import { $, $$, encPath, esc, wideBrowse } from './util.js';
@@ -72,7 +73,9 @@ document.addEventListener('click', (ev) => {
   if (!a || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
   ev.preventDefault();
   closeMenus();
-  openChoose(a, a.dataset.claude || null, 'after' in a.dataset);
+  // Edit picked from the recipe's ⋯ menu: the menu is the place to open by.
+  const at = a.offsetParent ? a : a.closest('.action-btns')?.querySelector('.recipe-more summary') || a;
+  openChoose(at, a.dataset.claude || null, 'after' in a.dataset);
 });
 
 /**
@@ -94,6 +97,10 @@ export function openChoose(anchor, path, after = false, finish = false) {
         : path ? 'Say what to change. Claude rewrites and saves it.' : 'Give a link, text or photo. Claude writes and saves it.');
   const file = opt(Boolean(why) && !finish, `href="${editor}" data-pick`, FILE_ICON, path ? 'Edit the file' : 'Start blank',
     path ? 'Change the Cooklang text yourself.' : 'Write it yourself in the editor.');
+  // Edit also takes a new photo, when Drive is there to save it to.
+  const e = path && !after && !finish ? S.recipes.get(path) : null;
+  const photo = e && S.live === 'on' && e.driveId
+    ? opt(false, 'type="button" data-pick="photo"', PHOTO_ICON, e.driveImage ? 'Change photo' : 'Add photo', 'Paste, pick or link a photo of the dish.', 'button') : '';
   const title = after ? 'How did it go?' : path ? `Edit ${S.recipes.get(path)?.title || 'recipe'}` : 'New recipe';
   const sub = after ? 'Anything to change for next time?'
     : path ? 'How do you want to change it?' : 'How do you want to start?';
@@ -105,11 +112,13 @@ export function openChoose(anchor, path, after = false, finish = false) {
       <button class="sheet-x" data-close aria-label="Close">${CLOSE_ICON}</button></div>`}
     ${finish ? opt(true, 'type="button" data-pick="done"', CHECK_ICON, 'Just finish', 'Nothing to change. Back to the recipe.', 'button') : ''}
     ${why ? file + claude : claude + file}
+    ${photo}
   </div>`;
   $$('[data-pick]', dlg).forEach((a) => {
     a.onclick = () => {
       if (a.dataset.pick === 'claude') connectorChecked = 0; // look again when the page comes back
       dlg.close();
+      if (a.dataset.pick === 'photo' && e) editorView().then((v) => v.changePhoto(e));
     };
   });
   const x = $('[data-close]', dlg);

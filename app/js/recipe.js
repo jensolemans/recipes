@@ -12,7 +12,7 @@ import { partsText, servingsText, shopCtx, undoable } from './list.js';
 import { fullPhoto, heroBackdrop } from './live.js';
 import { go, parseHash } from './app.js';
 import { P, byDayMeal, canPlan, dayWord, isCooked, planUndo, saveRecipe } from './planner.js';
-import { editorView, shareView } from './lazy.js';
+import { shareView } from './lazy.js';
 import { showSideTab, sideMode } from './side.js';
 import { S } from './state.js';
 import { wireTimerChips } from './timers.js';
@@ -236,7 +236,6 @@ export async function showRecipe(rawPath, params) {
   let mult = fromLink(params.get('x'), 0.25, 10) ?? 1;
 
   const crumbs = [e.chapter, ...e.sub.split('/').filter(Boolean)];
-  const canEdit = S.live === 'on' && e.driveId;
   // Signed in on this device: also offline, where Edit opens the editor.
   const owner = drive.enabled() && drive.wasSignedIn();
 
@@ -258,22 +257,18 @@ export async function showRecipe(rawPath, params) {
           <p class="print-only print-size" id="print-size"></p>
           <div class="recipe-actions">
             <div class="scaler" id="scaler"></div>
-            <span class="row-break" aria-hidden="true"></span>
-            <a class="btn btn-primary icon-btn" id="cook-btn" href="#/cook/${encPath(path)}" title="Cook mode" aria-label="Cook mode">${CHEF_ICON}</a>
-            ${S.shop && S.live === 'on' ? `<button class="btn btn-quiet icon-btn" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}</button>` : ''}
-            ${canPlan() ? `<button class="btn btn-quiet icon-btn" id="save-btn" title="Save" aria-label="Save">${BOOKMARK_ICON}</button>` : ''}
-            ${owner
-              ? `<a class="btn btn-quiet icon-btn" id="edit-btn" ${claudeLink(path)} title="Edit" aria-label="Edit">${PEN_ICON}</a>`
-              : `<button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>`}
-            ${owner || canEdit ? `
-            <details class="menu recipe-more">
-              <summary class="btn btn-quiet icon-btn" title="More" aria-label="More">${MORE_ICON}</summary>
-              <div class="menu-pop">
-                ${owner ? '<button class="menu-item" id="share-btn" aria-haspopup="dialog">Share</button>' : ''}
-                <button class="menu-item" id="print-btn">Print</button>
-                ${canEdit ? '<button class="menu-item" id="photo-btn" aria-haspopup="dialog">Change photo</button>' : ''}              </div>
-            </details>`
-              : `<button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>`}
+            <div class="action-btns" id="action-btns">
+              <a class="btn btn-primary icon-btn" id="cook-btn" href="#/cook/${encPath(path)}" title="Cook mode" aria-label="Cook mode">${CHEF_ICON}</a>
+              ${S.shop && S.live === 'on' ? `<button class="btn btn-quiet icon-btn" id="add-list" title="Add to shopping list" aria-label="Add to shopping list">${BASKET_ICON}</button>` : ''}
+              ${canPlan() ? `<button class="btn btn-quiet icon-btn" id="save-btn" title="Save" aria-label="Save">${BOOKMARK_ICON}</button>` : ''}
+              ${owner ? `<a class="btn btn-quiet icon-btn" id="edit-btn" ${claudeLink(path)} title="Edit" aria-label="Edit">${PEN_ICON}</a>` : ''}
+              <button class="btn btn-quiet icon-btn" id="share-btn" title="Share" aria-label="Share" aria-haspopup="dialog">${SHARE_ICON}</button>
+              <button class="btn btn-quiet icon-btn" id="print-btn" title="Print" aria-label="Print">${PRINT_ICON}</button>
+              <details class="menu recipe-more">
+                <summary class="btn btn-quiet icon-btn" title="More" aria-label="More">${MORE_ICON}</summary>
+                <div class="menu-pop"></div>
+              </details>
+            </div>
           </div>
         </div>
       </div>
@@ -291,11 +286,7 @@ export async function showRecipe(rawPath, params) {
     hero.closest('.recipe-top').classList.remove('has-img');
     hero.parentElement.remove();
   };
-  const photoBtn = $('#photo-btn');
-  if (photoBtn) photoBtn.onclick = () => { closeMenus(); editorView().then((v) => v.changePhoto(e)); };
-  // When the row wraps, ⋯ can end up on the left: open the menu rightwards then.
-  const more = $('.recipe-more');
-  if (more) more.ontoggle = () => { if (more.open) $('.menu-pop', more).classList.toggle('at-left', more.getBoundingClientRect().right < 220); };
+  fitActions();
 
   $$('.crumbs a[data-ch]').forEach((a) => {
     a.onclick = (ev) => { ev.preventDefault(); S.filters.chapter = a.dataset.ch; S.filters.sub = a.dataset.sub; go('#/'); };
@@ -477,4 +468,36 @@ export function cookSteps(recipe) {
   }
   if (notes.length && steps.length) steps[steps.length - 1].after = notes;
   return steps;
+}
+
+/**
+ * Keeps the action buttons on one row: the last ones that do not fit go
+ * under ⋯, which only shows when something is in it.
+ */
+function fitActions() {
+  const row = $('#action-btns');
+  const more = $('.recipe-more', row);
+  const btns = $$(':scope > .icon-btn', row);
+  const fit = () => {
+    if (!row.isConnected) { ro.disconnect(); return; }
+    btns.forEach((b) => b.classList.remove('is-over'));
+    more.classList.add('is-over');
+    // Cook mode always stays.
+    for (let i = btns.length - 1; i > 0 && row.scrollWidth > row.clientWidth; i--) {
+      btns[i].classList.add('is-over');
+      more.classList.remove('is-over');
+    }
+  };
+  const ro = new ResizeObserver(fit);
+  ro.observe(row);
+  more.ontoggle = () => {
+    if (!more.open) return;
+    // What is out of the row, by the names it has now (they change with the list and Saved).
+    const over = $('.menu-pop', more);
+    over.innerHTML = btns.filter((b) => b.classList.contains('is-over'))
+      .map((b) => `<button class="menu-item" data-for="${b.id}">${esc(b.title)}</button>`).join('');
+    $$('[data-for]', over).forEach((m) => { m.onclick = () => { closeMenus(); $(`#${m.dataset.for}`).click(); }; });
+    // When the row wraps, ⋯ can end up on the left: open the menu rightwards then.
+    over.classList.toggle('at-left', more.getBoundingClientRect().right < 220);
+  };
 }

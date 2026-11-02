@@ -171,10 +171,24 @@ function choosePhoto(title) {
   });
 }
 
-/** Change photo in the recipe's ⋯ menu: saves the photo next to the recipe in Drive. */
+/** Shows the picked photo dimmed on the recipe page, with a spinner, while it saves. */
+function showSaving(e, url) {
+  const top = parseHash().path === `/r/${e.path}` && $('.recipe-top');
+  if (!top) return;
+  let fig = $('.hero', top);
+  if (!fig) { top.insertAdjacentHTML('afterbegin', '<figure class="hero"></figure>'); fig = $('.hero', top); }
+  top.classList.add('has-img');
+  fig.classList.remove('skeleton');
+  fig.classList.add('is-saving');
+  fig.innerHTML = `<img src="${url}" alt=""><span class="hero-saving" role="status">Saving photo</span>`;
+}
+
+/** Change photo under the recipe's Edit: saves the photo next to the recipe in Drive. */
 export async function changePhoto(e) {
   const picked = await choosePhoto(e.driveImage ? 'Change photo' : 'Add photo');
   if (!picked) return;
+  const preview = URL.createObjectURL(picked);
+  showSaving(e, preview);
   try {
     const blob = await resizeImage(picked);
     await drive.renewIfNeeded();
@@ -197,11 +211,13 @@ export async function changePhoto(e) {
     e.imageMd5 = img.md5Checksum;
     e.driveImage = img;
     toast('Photo saved to Google Drive.');
-    if (parseHash().path === `/r/${e.path}`) route();
   } catch (err) {
     toast(err.message || 'The photo could not be saved.');
     renderAccount();
   }
+  // Draws the saved photo, or the old one back.
+  if (parseHash().path === `/r/${e.path}`) route();
+  URL.revokeObjectURL(preview);
 }
 
 export async function showEditor(rawPath) {

@@ -12,8 +12,8 @@ export default async function () {
     const page = await newPage();
     await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
     await page.waitForSelector('#cook-btn');
-    const order = await page.$$eval('.recipe-actions > :not(.row-break)', (els) => els.map((e) => e.id || e.className));
-    ok(order[0] === 'scaler' && order[1] === 'cook-btn', `cook mode sits right after the servings (${order.join(', ')})`);
+    const order = await page.$$eval('.recipe-actions > *, #action-btns > *', (els) => els.map((e) => e.id || e.className));
+    ok(order[0] === 'scaler' && order[2] === 'cook-btn', `cook mode sits right after the servings (${order.join(', ')})`);
     await page.click('[data-d="1"]');
     await page.click('#cook-btn');
     await page.waitForSelector('.cook-mise');

@@ -83,8 +83,11 @@ the request typed in (the folder being browsed, or the recipe's path); Claude
 writes with the cooklang-recipe skill and saves through the connector. Start
 blank / Edit the file opens the editor. Offline, or when the connector does
 not answer, the editor comes first and Ask Claude says why it is out; without
-`authUrl` they open the editor straight away. The recipe's ⋯ menu has Share,
-Print and Change photo. The editor keeps unsaved work as a draft on the
+`authUrl` they open the editor straight away. Edit on a recipe also has
+Change photo (signed in, with Drive): the picked photo shows dimmed with a
+spinner on the page while it saves. The recipe's buttons stay on one row
+(`fitActions` in `recipe.js`): the last ones that do not fit go under ⋯,
+which only shows then. The editor keeps unsaved work as a draft on the
 device.
 
 ### Cook mode (`cook.js`)

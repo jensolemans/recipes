@@ -33,12 +33,18 @@ export default async function () {
 
     await page.goto(`${BASE}/#/r/01%20Breakfast/crepes`);
     await page.waitForSelector('#save-btn', { timeout: 15000 });
-    await page.click('#save-btn');
+    // Save is in the row, or under ⋯ when the row is too narrow for it.
+    // Wait for the page drawn from Drive, with its list button, to fit its row.
+    await page.waitForSelector('#add-list', { state: 'attached' });
+    await page.waitForFunction(() => { const r = document.querySelector('#action-btns'); return r && r.scrollWidth <= r.clientWidth; });
+    if (await page.isVisible('#save-btn')) await page.click('#save-btn');
+    else { await page.click('.recipe-more summary'); await page.click('.recipe-more [data-for="save-btn"]'); }
     ok((await page.textContent('#toast')).includes('for 4'), 'Save puts the recipe in Saved for 4, no questions');
     ok(await until(() => planJson().saved.length === 1, 'saved'), 'and writes config/plan.json');
     ok(await page.$eval('#save-btn', (b) => b.dataset.state === 'saved'), 'the bookmark then shows it is saved');
-    const row = await page.$$eval('.recipe-actions > *:not(.row-break):not(.scaler)', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    ok(new Set(row).size === 1, `on a phone Save sits in the row with cook mode (${row.join(', ')})`);
+    const row = await page.$$eval('#scaler, #action-btns > *:not(.is-over)', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    ok(new Set(row).size === 1, `on a phone the servings and buttons share one row (${row.join(', ')})`);
+    ok(await page.$eval('#action-btns', (r) => r.scrollWidth <= r.clientWidth), 'and nothing sticks out of it');
 
     await page.click('#tabbar .tab:has-text("Plan")');
     await page.waitForSelector(`${DAYS}`);
