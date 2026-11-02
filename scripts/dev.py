@@ -13,6 +13,9 @@ not committed):
   folderId    Google Drive folder ID (needed for signing in)
   authUrl     address of the recipes Worker (optional, keeps you signed in)
   title       site title
+
+The tests start their own copy on the fixture recipes with RECIPES_DIR,
+DEV_OUT (where the data is built) and PORT; then local.json is not needed.
 """
 import json
 import os
@@ -24,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = ROOT / "app"
-OUT = ROOT / ".dev" / "site"
+OUT = Path(os.environ.get("DEV_OUT") or ROOT / ".dev" / "site")
 SETTINGS = ROOT / "local.json"
 PORT = int(os.environ.get("PORT", "8000"))
 
@@ -33,6 +36,8 @@ import build as builder  # noqa: E402
 
 
 def load_settings() -> dict:
+    if os.environ.get("RECIPES_DIR"):
+        return {"recipesDir": os.environ["RECIPES_DIR"], "title": "Recipes"}
     if not SETTINGS.exists():
         default = {
             "recipesDir": str(Path.home() / "My Drive" / "Cooklang Recipes"),
@@ -59,10 +64,14 @@ lock = threading.Lock()
 last_stamp = None
 
 
-def stamp() -> tuple:
-    """Changes whenever a recipe or photo is added, removed or edited."""
-    files = [p for p in recipes_dir.rglob("*") if p.suffix.lower() in (".cook", ".jpg", ".jpeg", ".png", ".webp")]
-    return (len(files), max((p.stat().st_mtime for p in files), default=0))
+def stamp() -> frozenset:
+    """Changes whenever a recipe, photo or aisle.conf is added, removed, renamed, moved or edited."""
+    kinds = (".cook", ".jpg", ".jpeg", ".png", ".webp", ".conf")
+    return frozenset(
+        (p.relative_to(recipes_dir).as_posix(), st.st_size, st.st_mtime_ns)
+        for p in recipes_dir.rglob("*") if p.suffix.lower() in kinds
+        for st in (p.stat(),)
+    )
 
 
 def rebuild_if_needed() -> None:
@@ -90,6 +99,10 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args):  # keep the console quiet
         pass
 
+
+# The site asks for its modules, styles and fonts all at once; the default
+# queue of 5 waiting connections turns some of them away on Windows.
+ThreadingHTTPServer.request_queue_size = 128
 
 Handler.extensions_map[".wasm"] = "application/wasm"
 Handler.extensions_map[".js"] = "text/javascript"

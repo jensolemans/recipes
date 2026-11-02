@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Build the public recipe site.
 
-Usage: build.py RECIPES_DIR APP_DIR OUT_DIR
+Usage: build.py RECIPES_DIR APP_DIR OUT_DIR [--keep-photos]
 
 Copies the web app from APP_DIR to OUT_DIR (naming the home-screen app in
 manifest.webmanifest after the site title) and writes:
   data/recipes.json  every .cook file: path, source text, md5, modified time, image
   img/<id>.jpg       full-size photo (max 1600 px)
   thumb/<id>.jpg     card thumbnail (max 640 px)
+  version.txt        a fingerprint of all of it except the build time, so the
+                     hourly publish can tell that nothing changed
+
+With --keep-photos the resized photos already in OUT_DIR stay (only new
+ones are made) and the ones no recipe uses any more are removed.
 
 The photo id changes with the photo, so a replaced photo gets a new address
 and no cached copy of the old one can stand in for it.
@@ -54,12 +59,24 @@ def find_image(cook: Path) -> Path | None:
     return None
 
 
+def site_files(app_dir: Path) -> list[str]:
+    """Every file the site needs offline, as paths relative to app/."""
+    skip = {"sw.js"}
+    return sorted(
+        p.relative_to(app_dir).as_posix() for p in app_dir.rglob("*")
+        if p.is_file() and p.name not in skip and p.suffix not in (".txt", ".md")
+        and not p.name.endswith(".d.ts")  # types for the type check only
+        and p.name != "package.json"
+    )
+
+
 def stamp_service_worker(app_dir: Path, out_dir: Path) -> None:
-    """Names the offline cache after a fingerprint of the site files.
+    """Names the offline cache after a fingerprint of the site files and lists them.
 
     A change to the site then changes sw.js, so phones install the whole new
     version at once instead of picking it up file by file. Recipe changes do
-    not count: the recipe index refreshes on its own.
+    not count: the recipe index refreshes on its own. The file list comes
+    from app/ itself, so a new file is never left out of the offline copy.
     """
     sw = out_dir / "sw.js"
     if not sw.exists():
@@ -69,7 +86,14 @@ def stamp_service_worker(app_dir: Path, out_dir: Path) -> None:
         digest.update(f.relative_to(app_dir).as_posix().encode("utf-8"))
         digest.update(f.read_bytes().replace(b"\r\n", b"\n"))
     text = sw.read_text(encoding="utf-8")
-    sw.write_text(text.replace("const CACHE = 'recipes-dev';", f"const CACHE = 'recipes-{digest.hexdigest()[:10]}';"), encoding="utf-8")
+    for old, new in (
+        ("const CACHE = 'recipes-dev';", f"const CACHE = 'recipes-{digest.hexdigest()[:10]}';"),
+        ("const SITE = [];", f"const SITE = {json.dumps(site_files(app_dir))};"),
+    ):
+        if old not in text:
+            raise SystemExit(f"error: sw.js no longer has {old!r} for build.py to fill in")
+        text = text.replace(old, new)
+    sw.write_text(text, encoding="utf-8")
 
 
 def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = False) -> int:
@@ -138,6 +162,16 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
     (data_dir / "recipes.json").write_text(
         json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
     )
+    if keep_photos:  # photos of recipes that are gone or got a new photo
+        used = {r["image"] for r in recipes if "image" in r}
+        for kind in ("img", "thumb"):
+            for f in (out_dir / kind).glob("*.jpg"):
+                if f.stem not in used:
+                    f.unlink()
+    version = hashlib.sha1(
+        json.dumps({**payload, "built": 0}, sort_keys=True).encode("utf-8") + (out_dir / "sw.js").read_bytes()
+    ).hexdigest()
+    (out_dir / "version.txt").write_text(version + "\n", encoding="utf-8")
     print(f"Built {len(recipes)} recipes, "
           f"{sum(1 for r in recipes if 'image' in r)} photos, {len(folders)} folders")
     if not recipes:
@@ -147,11 +181,12 @@ def build(recipes_dir: Path, app_dir: Path, out_dir: Path, keep_photos: bool = F
 
 
 def main() -> int:
-    if len(sys.argv) != 4:
+    args = [a for a in sys.argv[1:] if a != "--keep-photos"]
+    if len(args) != 3:
         print(__doc__, file=sys.stderr)
         return 2
-    recipes_dir, app_dir, out_dir = (Path(a).resolve() for a in sys.argv[1:4])
-    return build(recipes_dir, app_dir, out_dir)
+    recipes_dir, app_dir, out_dir = (Path(a).resolve() for a in args)
+    return build(recipes_dir, app_dir, out_dir, keep_photos="--keep-photos" in sys.argv)
 
 
 if __name__ == "__main__":
