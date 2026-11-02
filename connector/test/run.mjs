@@ -3,8 +3,10 @@
 // Worker itself with `wrangler dev`, pointed at the fakes, with empty storage.
 // Then runs signin.test.mjs and connector.test.mjs, and stops everything
 // again, child processes included (on Windows, workerd outlives a plain kill).
-// Never touches the real Drive folder. It only reads tools/cooklint.py from
-// the synced folder (recipesDir in local.json), the one copy of the house style.
+// Never touches the real Drive folder. It reads tools/cooklint.py, the house
+// style, from the synced folder (recipesDir in local.json) when there is one,
+// so a change there is tested at once; elsewhere (CI) from the copy in
+// tests/fixtures/recipes/tools.
 import { spawn, execSync } from 'child_process';
 import { createRequire } from 'module';
 import crypto from 'crypto';
@@ -78,9 +80,10 @@ async function photos() {
 let ok = false;
 let store = '';
 try {
-  const settings = JSON.parse(fs.readFileSync(path.join(ROOT, 'local.json'), 'utf8'));
-  const lint = path.join(settings.recipesDir, 'tools', 'cooklint.py');
-  if (!fs.existsSync(lint)) throw new Error(`cooklint.py not found at ${lint}. Check recipesDir in local.json.`);
+  const local = path.join(ROOT, 'local.json');
+  const synced = fs.existsSync(local) ? path.join(JSON.parse(fs.readFileSync(local, 'utf8')).recipesDir, 'tools', 'cooklint.py') : null;
+  const lint = synced && fs.existsSync(synced) ? synced : path.join(ROOT, 'tests', 'fixtures', 'recipes', 'tools', 'cooklint.py');
+  console.log(`House style from ${lint}`);
   for (const port of [8787, 8799]) {
     if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Stop the other local Worker or fake first.`);
   }
