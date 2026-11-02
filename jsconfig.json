@@ -1,0 +1,17 @@
+{
+  // Type checks the site's JavaScript without a build step: `tsc -p jsconfig.json`
+  // (needs `npm i -g typescript` once). Editors read this file too.
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker.ImportScripts"],
+    "strict": false,
+    "skipLibCheck": true
+  },
+  "include": ["app/js/**/*.js", "app/js/types.d.ts"],
+  "exclude": ["app/vendor"]
+}

@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Only this site's own scripts (and Google sign-in) may run, so text in a
+       recipe can never run as code. connect-src and img-src allow any https
+       address for photo links. The hash is the theme script below: change
+       one, change the other (the tests notice). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-St95eV1TlNFYT6Bi7h9Kh2FG1ccUgzhnK9S1KLnvqJ0=' 'wasm-unsafe-eval' https://accounts.google.com; connect-src 'self' https:; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Recipes</title>
   <meta name="description" content="A personal recipe collection.">
