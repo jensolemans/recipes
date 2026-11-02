@@ -149,7 +149,10 @@ export default async function () {
     // a finger drags a meal into the bin
     const cdp = await ctx.newCDPSession(page);
     const touch = (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
-    const free = await page.locator(`${TODAY} >> .pslot[data-meal="lunch"] .pchip`).boundingBox();
+    // After Undo the plan redraws: wait until the chip is there to hold.
+    const lunch = page.locator(`${TODAY} >> .pslot[data-meal="lunch"] .pchip`);
+    let free = null;
+    await until(async () => { await page.waitForTimeout(100); free = await lunch.boundingBox(); return Boolean(free); }, 'lunch chip');
     await touch('touchStart', free.x + 40, free.y + 15);
     await page.waitForTimeout(500);
     const bin = await page.evaluate(() => { const r = document.querySelector('.pbin').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
