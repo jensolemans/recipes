@@ -1,28 +1,30 @@
 ---
 name: import-recipe
-description: Import a recipe into Jens's collection from a web address, pasted text or a photo of a cookbook page. Converts it with the cooklang-recipe skill, saves the .cook file in the right category of the synced Google Drive folder, adds the dish photo, lints it and gives the link. Use when Jens says import, add or save a recipe, or pastes a recipe link.
+description: Import a recipe into Jens's collection from a web address, pasted text or a photo of a cookbook page. Converts it with the cooklang-recipe skill, saves it in the right folder through the recipes connector, adds the dish photo and gives the link. Use when Jens says import, add or save a recipe, or pastes a recipe link.
 argument-hint: <recipe link, pasted recipe, or photo>
 ---
 
 # Import a recipe
 
 Turn one recipe into a finished entry in the collection: a `.cook` file in the
-right folder of the synced Google Drive folder, with its photo next to it.
-Google Drive for desktop uploads it within seconds, so the website and the
-Cooklang app see it without anything else to do.
+right folder of the Google Drive folder, with its photo next to it. It goes
+through the recipes connector, the same way Claude on the phone or the web
+imports a recipe, so there is one way in: the connector checks the house
+style, picks up the photo and the site, the Cooklang app and the synced
+folder all see the result.
 
 The input is in the arguments: a web address, pasted recipe text, or an
 attached photo of a cookbook page. If there is nothing, ask for it. If there
 are several recipes, do them one by one with this whole procedure.
 
-## 1. Where things are
+## 1. The connector
 
-- Read `local.json` in the repo root. `recipesDir` is the synced
-  "Cooklang Recipes" folder. Everything below is relative to it.
-- `tools/cooklint.py` in that folder is the house-style checker.
-  `FOLDER_FOR_COURSE` near its top maps each course to its folder.
-- List the existing folders (skip `config` and `tools`) to see the
-  subfolders, for example `3 Mains/Curry`, `3 Mains/Vegetarian`.
+Use the recipes connector's tools: `list_folders`, `find_recipes`,
+`read_recipe`, `save_recipe`, `set_photo`. Follow its own instructions
+(how to name files, what to do when a name is taken, photos). If its tools
+are not available in this session, stop and tell Jens to connect the
+recipes connector (setup in `connector/README.md`); do not write into the
+synced folder by hand.
 
 ## 2. Read the recipe
 
@@ -40,64 +42,34 @@ vocabularies, naming, tags and how steps are written. Do not restate or
 override its rules here. Keep its summary of conversion decisions for the
 report at the end.
 
-## 4. Choose the folder and file name
+## 4. Choose the folder
 
-- Folder: start from `FOLDER_FOR_COURSE` for the recipe's `course`. If that
-  folder has subfolders, pick the one that fits best by looking at the
-  recipes already in each (a chicken curry goes to `3 Mains/Curry`, a
-  vegetarian traybake to `3 Mains/Vegetarian`). When two fit equally well or
-  none fits, ask Jens with the options instead of guessing.
-- File name: the title in snake_case, the way the skill names files (for
-  example `swedish_meatballs.cook`).
-- If a recipe with that name is already in that folder, or the same recipe
-  clearly exists elsewhere in the collection, stop and ask: replace it, keep
-  both under another name, or skip.
+`list_folders` gives the folders and which folder each course goes to. If
+that folder has subfolders, pick the one that fits best by the recipes
+already in it (`find_recipes` helps): a chicken curry goes to `Curry`, a
+vegetarian traybake to `Vegetarian`. When two fit equally well or none fits,
+ask Jens with the options instead of guessing. If the same recipe clearly
+exists already, stop and ask: replace it, keep both under another name, or
+skip.
 
-## 5. Save it
+## 5. Save it and add the photo
 
-Write the `.cook` file in UTF-8. Only create this one recipe and its photo:
-never change or move other recipes.
+Save with `save_recipe`. When it refuses the recipe with house-style
+problems, fix them and save again. Then add the photo with `set_photo` and
+the web address. Without a web address (pasted text, cookbook photo), or
+when the site blocks the download, give Jens the "Add photo" link that
+`save_recipe` returned.
 
-## 6. Add the dish photo
-
-From the repo root run:
-
-```
-python scripts/fetch_photo.py "<web address>" "<recipesDir>/<folder>/<file name>.jpg"
-```
-
-It finds the recipe's main photo on the page (or takes a direct image link),
-picks the largest version and saves it as a JPEG of at most 1600 px and
-under 1 MB, which is the house format.
-
-If it fails, the site blocks downloads, or there was no web address (pasted
-text, cookbook photo), skip the photo and say so in the report: Jens can
-paste one in the site's editor with Paste photo.
-
-## 7. Check it
-
-Run the checker on the new file:
-
-```
-python "<recipesDir>/tools/cooklint.py" "<recipesDir>/<folder>/<file name>.cook"
-```
-
-Fix every ERROR in the file and run it again. Fix warnings when the fix is
-clear from the source; report the rest.
-
-## 8. Report
+## 6. Report
 
 Keep it short:
 
 - Title and where it was saved (folder and file name), and whether the photo
   was added.
-- Links: the local preview `http://localhost:8000/#/r/<path>` and the live
-  site `https://jensolemans.github.io/recipes/#/r/<path>`, with `<path>` the
-  folder and file name without `.cook`, each part URL-encoded. Signed in, the
-  live site shows it as soon as Google Drive has synced; friends see it
-  after the next hourly update.
+- The link `save_recipe` gave. Signed in, the live site shows it at once;
+  friends see it after the next hourly update.
 - The skill's summary of conversion decisions.
-- Any lint warnings left, and any choice Jens may want to change (folder,
+- Any warnings left, and any choice Jens may want to change (folder,
   servings, a substitution).
 
 Recipes live in Google Drive, not in this git repository: do not commit

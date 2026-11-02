@@ -66,9 +66,9 @@ Tools: `list_folders`, `find_recipes`, `read_recipe`, `save_recipe` (new
 recipes and edits in place; refused when the recipe changed since Claude read
 it, or when it fails the house style of `tools/cooklint.py`, whose rules
 `src/lint.js` ports), `move_recipe` (the photo moves along), `set_photo`
-(from a recipe page or image link; `src/photo.js` does what
-`scripts/fetch_photo.py` does, with Cloudflare's Images binding for the
-resizing, free up to 5,000 a month). No delete.
+(from a recipe page or image link: its recipe data, then og:image, at most
+1600 px and under 1 MB, resized with Cloudflare's Images binding, free up to
+5,000 a month). The laptop's `/import-recipe` uses these same tools. No delete.
 The connector's instructions tell Claude to use the cooklang-recipe skill.
 
 ## Day to day
@@ -87,6 +87,8 @@ The connector's instructions tell Claude to use the cooklang-recipe skill.
   with `wrangler dev` pointed at them, runs `test/signin.test.mjs` (the
   site's sign-in) and `test/connector.test.mjs` (Claude connecting and every
   tool), and stops it all again. It reads `tools/cooklint.py` from the synced
-  folder (`recipesDir` in `../local.json`) and never writes to Drive.
+  folder (`recipesDir` in `../local.json`), or the copy in
+  `../tests/fixtures/recipes/tools/` where there is none (CI), and never
+  writes to Drive.
 - On Windows, stopping `wrangler dev` by hand can leave its `workerd`
   processes running on the port; stop the whole process tree.

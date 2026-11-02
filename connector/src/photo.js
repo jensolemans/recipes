@@ -1,5 +1,5 @@
-// The dish photo for a recipe, as scripts/fetch_photo.py does on the laptop:
-// from a recipe page (its recipe data, then og:image / twitter:image) or a
+// The dish photo for a recipe (set_photo), on the phone, the web and the
+// laptop alike: from a recipe page (its recipe data, then og:image / twitter:image) or a
 // direct image link, the largest candidate, saved as a JPEG of at most
 // 1600 px on its longest side and under 1 MB. The resizing runs on
 // Cloudflare's Images binding: the Worker itself has too little CPU time.
