@@ -1,14 +1,22 @@
-/* Home: search, the folder and filter panel, the recipe cards. */
+/* Home: search, the folder button and filter bar with their panels, the phone sheet, the recipe cards. */
 
 /* ---------- home ---------- */
-.home-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 4px 0 18px; }
+.home-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 4px 0 18px; }
 .home-title {
   margin: 0; font-weight: 800; letter-spacing: -.035em; line-height: .92;
   font-size: clamp(44px, 9vw, 104px); font-variation-settings: "opsz" 96;
 }
 
-/* Search, folder and sort: one row, or on phones the search above the other two. */
+/* Search, then the folder button, the filter bar and sort. When the search
+   would get narrower than the rest (fitRow in home.js), it takes a row of its
+   own and the folder button stretches to fill the row below. On phones the
+   bar hides in the folder sheet. */
+.home { position: relative; }
 .searchrow { display: flex; gap: 10px; align-items: center; }
+.searchrow.is-wrapped { flex-wrap: wrap; }
+.searchrow.is-wrapped .search { flex-basis: 100%; }
+.searchrow.is-wrapped .browse-btns { flex: 1 1 100%; }
+.searchrow.is-wrapped .place { flex: 1 1 auto; max-width: none; }
 .search {
   flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px;
   background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 0 16px; min-height: 48px;
@@ -16,15 +24,134 @@
 .search:focus-within { border-color: var(--strong); }
 .search svg { width: 20px; height: 20px; fill: none; stroke: var(--muted); stroke-width: 2; flex: none; }
 .search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 16px; padding: 12px 0; }
+.browse-btns { display: flex; gap: 10px; flex: none; max-width: 100%; }
+.home svg.chev { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+[aria-expanded="true"] > svg.chev { transform: rotate(180deg); }
+
+/* The folder: the first thing to pick, so a firmer outline and its name in bold. */
+.place {
+  display: flex; max-width: 300px; min-width: 0; white-space: nowrap; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px 0 16px;
+  border: 1px solid var(--dotted); background: var(--card); border-radius: 999px; cursor: pointer; text-align: left;
+}
+.place:hover { border-color: var(--strong); }
+.place[aria-expanded="true"] { background: var(--soft); }
+.place > svg:first-child { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.place-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 700; }
+.place-n { color: var(--muted); font-size: 13px; }
+
+/* Diet, Time, Difficulty and More: one quiet pill, each part says what is picked. */
+.fbar { display: flex; min-height: 48px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); overflow: hidden; }
+.fseg {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; min-width: 0;
+  border: 0; border-left: 1px solid var(--line); background: none; padding: 0 14px; cursor: pointer; text-align: left; white-space: nowrap;
+}
+.fseg:first-child { border-left: 0; padding-left: 18px; }
+.fseg small { font-size: 12px; line-height: 1.1; color: var(--muted); }
+.fseg-v { font-size: 14px; font-weight: 600; line-height: 1.25; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.fseg-v.is-any { font-weight: 400; color: var(--muted); }
+.fseg:hover, .fseg[aria-expanded="true"] { background: var(--soft); }
+.fseg:focus-visible { outline-offset: -4px; border-radius: 999px; }
+.fseg-more { flex-direction: row; align-items: center; gap: 6px; padding: 0 16px 0 14px; }
+.fseg-more svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.fseg-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--strong); color: var(--on-strong); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+
+/* The panel under the bar: all folders across the page, or one filter under its part. */
+.pop {
+  position: absolute; z-index: 20; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: var(--shadow); padding: 8px; animation: sheet-in .12s ease-out;
+}
+.pop[hidden] { display: none; }
+.pop-folder { right: 0; padding: 16px 18px 12px; }
+.pop-diet, .pop-difficulty { width: 240px; }
+.pop-time { width: 340px; padding: 14px 16px 12px; }
+.pop-more { width: 380px; max-height: min(540px, 70vh); overflow-y: auto; padding: 6px 18px 12px; }
+
+.fp { columns: 200px 4; column-gap: 28px; }
+.fp-group { break-inside: avoid; padding-bottom: 12px; }
+.fp-head { border: 0; background: none; padding: 3px 0; cursor: pointer; text-align: left; font-size: 16px; font-weight: 700; }
+.fp-head span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 2px; }
+.fp-head:hover { text-decoration: underline; text-underline-offset: 3px; }
+.fp-subs, .fp-nest { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.fp-subs { margin-top: 5px; }
+.fp-sub { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 10px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.fp-sub:hover { border-color: var(--muted); color: var(--ink); }
+.fp-sep { color: var(--muted); font-size: 13px; }
+.fp-head.is-here, .fp-head.is-here span { color: var(--accent); }
+.fp-sub.is-here { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* Diet (pick several) and difficulty (pick one): a short list, chips in the phone sheet. */
+.chk-list { display: flex; flex-direction: column; gap: 2px; }
+.chk {
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 10px; border: 0; border-radius: 10px;
+  background: none; font-size: 15px; text-align: left; cursor: pointer;
+}
+.chk:hover { background: var(--soft); }
+.chk-box { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border: 1.5px solid var(--dotted); border-radius: 5px; }
+.chk-box svg { width: 14px; height: 14px; fill: none; stroke: var(--on-strong); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+.chk[aria-pressed="true"] .chk-box { background: var(--strong); border-color: var(--strong); }
+.chk[aria-pressed="true"] .chk-box svg { opacity: 1; }
+.chk-n { margin-left: auto; color: var(--muted); font-size: 13px; }
+.pop-hint { margin: 6px 10px 2px; font-size: 12px; color: var(--muted); }
+.pop-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.more .facet { padding: 12px 0; border-top: 1px solid var(--line); }
+.more .facet:first-child { border-top: 0; }
+
+/* Time: two ends on one track over a small chart of how long the recipes take. */
+.tsl { --thumb: 22px; --lo: 0; --hi: 1; }
+.tsl-read { margin: 0 0 10px; font-size: 15px; }
+.tsl-read b { font-weight: 700; }
+.tsl-read span { margin-left: 4px; font-size: 13px; color: var(--muted); }
+.tsl-hist { display: flex; align-items: flex-end; gap: 3px; height: 48px; padding: 0 calc(var(--thumb) / 2); }
+.tsl-hist span { flex: 1; min-height: 2px; border-radius: 3px 3px 0 0; background: var(--line); transition: background .1s; }
+.tsl-hist span.in { background: var(--strong); }
+.tsl-track { position: relative; height: var(--thumb); margin-top: 4px; }
+.tsl-track::before, .tsl-fill { content: ''; position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+.tsl-track::before { left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); background: var(--line); }
+.tsl-fill {
+  background: var(--strong);
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--lo)); right: calc(var(--thumb) / 2 + (100% - var(--thumb)) * (1 - var(--hi)));
+}
+.tsl-track input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.tsl-track input:focus-visible { outline: none; }
+.tsl-track input::-webkit-slider-runnable-track { height: var(--thumb); background: none; }
+.tsl-track input::-moz-range-track { background: none; }
+.tsl-track input::-webkit-slider-thumb {
+  -webkit-appearance: none; pointer-events: auto; width: var(--thumb); height: var(--thumb); border-radius: 50%;
+  background: var(--card); border: 2px solid var(--strong); box-shadow: var(--shadow); cursor: grab;
+}
+.tsl-track input::-moz-range-thumb {
+  pointer-events: auto; width: calc(var(--thumb) - 4px); height: calc(var(--thumb) - 4px); border-radius: 50%;
+  background: var(--card); border: 2px solid var(--strong); box-shadow: var(--shadow); cursor: grab;
+}
+.tsl-track input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tsl-track input:focus-visible::-moz-range-thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tsl-ticks { position: relative; height: 18px; margin: 4px calc(var(--thumb) / 2) 0; font-size: 12px; color: var(--muted); }
+.tsl-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+
+
+/* Sort: a round button with just its icon at the end of the row. */
 .sort {
-  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 12px 0 16px;
-  border: 1px solid var(--line); border-radius: 999px; background: var(--card); white-space: nowrap; font-size: 15px;
+  position: relative; flex: none; display: grid; place-items: center; width: 48px; height: 48px;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--card);
 }
 .sort:hover { border-color: var(--muted); }
 .sort:has(select:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.sort .sort-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.sort .chev { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sort svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sort select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; }
+
+/* phones: search, folder and sort share a row; the filters live in the sheet */
+@media (max-width: 700px) {
+  .searchrow { flex-wrap: nowrap; gap: 8px; }
+  .search { flex: 1 1 auto; min-height: 44px; padding: 0 14px; }
+  .browse-btns { flex: none; min-width: 0; max-width: 64%; gap: 8px; }
+  .browse-btns .fbar, .pop, .place-n { display: none; }
+  .place { max-width: none; min-width: 0; flex: 1 1 auto; min-height: 44px; gap: 6px; padding: 0 8px 0 12px; }
+  .place-path { font-size: 14px; }
+  .sort { width: 44px; height: 44px; }
+}
+/* very narrow: the folder button is just its icon, a circle like sort (fitRow in home.js) */
+.searchrow.is-compact .place { flex: none; width: 44px; padding: 0; justify-content: center; }
+.searchrow.is-compact .place-path, .searchrow.is-compact .place svg.chev { display: none; }
 
 .opt, .mult {
   border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 6px 13px;
@@ -49,29 +176,6 @@ details.facet summary .chev { width: 18px; height: 18px; margin-left: auto; fill
 details.facet[open] summary { margin-bottom: 8px; }
 details.facet[open] summary .chev { transform: rotate(180deg); }
 
-/* where you are; opens the folder and filter panel */
-.place {
-  display: flex; flex: 0 1 auto; max-width: 380px; min-width: 0; white-space: nowrap; align-items: center; gap: 8px; min-height: 48px; padding: 0 14px 0 16px;
-  border: 1px solid var(--line); background: var(--card); border-radius: 999px; cursor: pointer; text-align: left;
-}
-.place:hover { border-color: var(--muted); }
-.sort { flex: none; }
-/* phones: folder and sort share the row under the search and fill it */
-@media (max-width: 700px) {
-  .searchrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-  .search { grid-column: 1 / -1; }
-  .place { flex: 1 1 auto; max-width: none; min-height: 44px; gap: 6px; padding: 0 8px 0 12px; }
-  .place-path { font-size: 14px; }
-  /* sort is just its icon here; the choices still open on tap */
-  .sort { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
-  .sort-now, .sort .chev { display: none; }
-}
-/* small phones: the folder icon makes room for the words */
-@media (max-width: 380px) { .place > svg:first-child { display: none; } .place { padding-left: 14px; } }
-.place svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
-.place-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
-.place-path b { font-weight: 700; }
-.place-n { color: var(--muted); font-size: 13px; }
 body:has(.sheet[open]) { overflow: hidden; }
 
 .sheet {
@@ -93,28 +197,43 @@ body:has(.sheet[open]) { overflow: hidden; }
 .seg button[aria-selected="true"] { background: var(--strong); color: var(--on-strong); }
 .sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 16px; flex: 1; }
 .sheet-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); flex: none; }
-.sheet-facets .facet { padding: 14px 0; border-top: 1px solid var(--line); }
-.sheet-facets .facet:first-child { border-top: 0; }
-.sheet-facets .facet-tags .facet-opts { max-height: none; }
+
+/* the phone sheet: the filters as the same joined pill in a grey band, the
+   open one under it; the folder list below, clearly apart */
+.mband { flex: none; margin-top: 6px; padding: 0 16px 14px; background: var(--soft); border-block: 1px solid var(--line); }
+.mband-head { display: flex; align-items: center; justify-content: space-between; margin-right: -10px; }
+.mlabel { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.mlabel-folders { flex: none; padding: 14px 16px 0; }
+.mbar .fseg { flex: 1 1 0; padding: 0 10px; }
+.mbar .fseg:first-child { padding-left: 14px; }
+.mbar .fseg-more { flex: none; padding: 0 14px 0 12px; }
+.mbar .fseg-v { max-width: 100%; }
+.mpanel { max-height: 42vh; overflow-y: auto; padding-top: 14px; }
+.mpanel .chk-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+.mpanel .chk { min-height: 36px; gap: 4px; padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); font-size: 14px; }
+.mpanel .chk-box { display: none; }
+.mpanel .chk[aria-pressed="true"] { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
+.mpanel .chk-n { margin-left: 2px; font-size: 12px; }
+.mpanel .chk[aria-pressed="true"] .chk-n { color: inherit; opacity: .75; }
+.mpanel .pop-hint { margin: 8px 0 0; }
+.mpanel .tsl { --thumb: 28px; }
+.mpanel .more .facet:first-child { padding-top: 4px; }
 
 .frow {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--line);
-  background: none; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 10px 0 10px calc(var(--depth, 0) * 18px);
+  border: 0; border-bottom: 1px solid var(--line); background: none; cursor: pointer; text-align: left;
 }
 .frow:last-child { border-bottom: 0; }
 .frow-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; }
+.frow.is-sub { min-height: 46px; }
+.frow.is-sub .frow-name { font-size: 15px; font-weight: 400; }
 .frow-n { color: var(--muted); font-size: 14px; }
-.sheet .chev { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .frow .chev { margin-left: -4px; }
 .frow.is-here, .frow.is-here .frow-n { color: var(--accent); }
-.frow.is-here { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
+.frow.is-here { box-shadow: inset 3px 0 0 var(--accent); padding-left: calc(12px + var(--depth, 0) * 18px); }
 .is-empty { opacity: .45; }
-.sheet-path { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
-.crumb { border: 0; background: none; padding: 0; font: inherit; font-weight: 400; color: var(--muted); cursor: pointer; letter-spacing: inherit; }
-.crumb:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-.crumb-sep { color: var(--muted); font-weight: 400; }
-.crumb-here { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* wider screens: the same panel, centred and wide, folders and filters side by side */
+
+/* wider screens: a sheet is a card in the middle */
 @media (min-width: 701px) {
   .sheet {
     margin: auto; width: min(1000px, calc(100vw - 64px)); height: min(720px, calc(100vh - 64px)); max-height: none; min-height: 0;
@@ -124,29 +243,14 @@ body:has(.sheet[open]) { overflow: hidden; }
   .sheet-grab { display: none; }
   .sheet-head { padding: 14px 14px 6px 24px; }
   .sheet-head h2 { font-size: 26px; }
-  .sheet-cols { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; border-top: 1px solid var(--line); }
-  .sheet-cols .sheet-body { padding: 12px 16px 20px; }
-  .sheet-cols .sheet-folders { padding: 16px 24px 24px; }
-  .tree { columns: 200px; column-gap: 28px; margin-top: 18px; }
-  .tree-group { break-inside: avoid; padding-bottom: 20px; }
-  .tree-all, .tree-head, .tree-leaf {
-    display: flex; align-items: center; gap: 4px; border: 0; background: none; padding: 3px 0; cursor: pointer;
-    text-align: left; font: inherit; color: var(--ink);
-  }
-  .tree-all, .tree-head { font-size: 16px; font-weight: 600; }
-  .tree-all span, .tree-head span { color: var(--muted); font-weight: 400; font-size: 14px; margin-left: 4px; }
-  .tree-leaf { color: var(--muted); font-size: 15px; }
-  .tree-leaf .chev { width: 15px; height: 15px; }
-  .tree-all:hover, .tree-head:hover, .tree-leaf:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
-  .tree-head.is-here, .tree-all.is-here, .tree-leaf.is-here, .tree-leaf.is-in { color: var(--accent); font-weight: 600; }
-  .sheet-side { border-left: 1px solid var(--line); background: var(--paper); }
-  .sheet-facets h3 { margin: 4px 0 2px; font-size: 18px; }
   .sheet-foot { padding: 14px 24px; }
 }
 @keyframes sheet-in { from { transform: scale(.98); opacity: 0; } }
 
-.active { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+/* phones: the filters that are on, as chips under the search (the bar shows them on bigger screens) */
+.active { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
 .active:empty { display: none; }
+@media (min-width: 701px) { .active { display: none; } }
 .pill {
   display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer;
   background: var(--soft); color: var(--ink); border-radius: 999px; padding: 6px 10px 6px 13px; font-size: 14px;
@@ -154,7 +258,7 @@ body:has(.sheet[open]) { overflow: hidden; }
 .pill svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 2; fill: none; }
 
 .grid {
-  display: grid; gap: 28px 20px; margin-top: 26px;
+  display: grid; gap: 28px 20px; margin-top: 24px;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
 }
 .card { text-decoration: none; display: flex; flex-direction: column; gap: 10px; }

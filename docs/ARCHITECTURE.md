@@ -39,7 +39,7 @@ earlier ones; `responsive.css` and `print.css` come last). The modules are in
 | `lazy.js` | Loaders for the views that load on first use |
 | `choose.js` | New and Edit: Ask Claude or the editor |
 | `live.js` | Signed in: recipes and photos live from Drive |
-| `home.js` | Home: search, sort, cards, the folder and filter panel |
+| `home.js` | Home: search, sort, cards, the folder button and filter bar |
 | `recipe.js` | The recipe page and the ingredient helpers others share |
 | `share.js` | Share sheet and QR card (lazy) |
 | `cook.js` | Cook mode (lazy) |
@@ -69,11 +69,24 @@ list, `#/plan` meal plan.
 
 ### Home (`home.js`)
 
-Search, and a folder button that says where you are and opens one panel
-with the Drive folders (a path on top to go back up; one level at a time on
-phones, each folder with its subfolders on bigger screens) and the filters:
-a bottom sheet with two tabs on phones, a wide panel with both side by side
-on bigger screens.
+Search, then the folder button (firmer outline, the folder's name in bold:
+it is the first thing to pick) and beside it the filter bar: Diet, Time,
+Difficulty and More (course, cuisine, tags). Each part says what is picked.
+On bigger screens each opens a panel under it: the folders in flowing columns
+with subfolders as chips, Diet as a checklist (pick several; vegetarian takes
+vegan along; `pescatarian` counts as fish), Time as a slider with two ends
+over a small chart of how long the recipes take (every 15 minutes up to an
+hour, then 1 h 30, 2 h, 2 h+), Difficulty as a checklist too (two of three
+reads "Not hard"). While the search would be narrower than the folder
+button, bar and sort together, it gets a row of its own and the folder
+button stretches to fill the row below (`fitRow`). Escape or a click
+outside closes it. On phones the bar is not on the page: the folder button
+opens one sheet with the same filter bar in a grey band on top (the open
+filter under it) and the folder list below, a folder with subfolders opening
+in place; the filters that are on show as chips under the search. Sort is a
+round icon button at the end of the row. On a very narrow phone, once the
+search would be narrower than the folder button, that button is just its
+folder icon (`fitRow`).
 
 ### New and Edit (`choose.js`)
 

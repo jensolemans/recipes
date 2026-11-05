@@ -11,9 +11,12 @@ export const S = {
   folders: [],
   live: 'off', // off | loading | on
   drive: null, // { folders: Map, files: Map }
-  filters: { chapter: '', sub: '', q: '', course: new Set(), cuisine: new Set(), diet: new Set(), difficulty: new Set(), time: new Set(), tags: new Set() },
+  // time: the ends of the time slider, as places on its scale (home.js STOPS)
+  filters: { chapter: '', sub: '', q: '', course: new Set(), cuisine: new Set(), diet: new Set(), difficulty: new Set(), time: { lo: 0, hi: 7 }, tags: new Set() },
   sort: saved.get('sort', 'recent'),
-  browse: { at: '', tab: 'folders' }, // phone browse sheet: folder being shown, open tab
+  // home: the open panel under the bar (folder, diet, time, difficulty, more),
+  // the filter open in the phone sheet, and the folders opened in its list
+  browse: { pop: '', pill: '', open: new Set() },
   dirty: false,
   currentHash: '',
   checked: new Map(), // path -> Set of checked ingredient keys
