@@ -2,7 +2,7 @@
 // method with timers, scaling, and the actions (cook, plan, list, share,
 // edit). Also the ingredient helpers cook mode and the list share.
 
-import { fmtDuration, fmtGrouped, fmtQuantity, fmtYield, initParser, parseRecipe, recipeParts, shouldList } from './cooklang.js';
+import { fmtAmount, fmtDuration, fmtGrouped, fmtQuantity, fmtYield, initParser, parseRecipe, recipeParts, shouldList } from './cooklang.js';
 import * as shop from './shopping.js';
 import * as drive from './drive.js';
 import * as plan from './plan.js';
@@ -70,6 +70,62 @@ export function ingItems(parsed) {
   return out;
 }
 
+/** A quantity as a plain amount to add up, or null when it is text or a range. */
+function plainAmount(q) {
+  const v = q?.value;
+  if (!v || v.type !== 'number') return null;
+  const n = v.value?.type === 'fraction' ? (v.value.value?.whole || 0) + (v.value.value?.num || 0) / (v.value.value?.den || 1) : Number(v.value?.value);
+  return Number.isFinite(n) ? { n, unit: q.unit || '' } : null;
+}
+
+/**
+ * The ingredients per chapter of the method, as [{ name, items }], for "As
+ * written". Null when fewer than two chapters use ingredients: then the flat
+ * list says it all. An ingredient used twice in one chapter is added up there.
+ * Keys are the first mention in the chapter, so the first chapter's ticks
+ * match the flat list's.
+ */
+export function ingChapters(parsed) {
+  const { recipe } = parsed;
+  if (!recipe) return null;
+  const chapters = [];
+  (recipe.sections || []).forEach((sec, i) => {
+    /** @type {Map<string, {ing: any, key: string, amounts: Map<string, number>, other: any[]}>} */
+    const rows = new Map();
+    for (const c of sec.content || []) {
+      if (c.type === 'text') continue;
+      for (const it of c.value.items || []) {
+        if (it.type !== 'ingredient') continue;
+        const mention = recipe.ingredients[it.index];
+        if (!mention) continue;
+        // "@&onion" uses an ingredient from earlier: list it under its own name.
+        const rel = mention.relation;
+        const ing = rel?.type === 'reference' && rel.reference_target === 'ingredient' ? recipe.ingredients[rel.references_to] : mention;
+        if (!ing || !shouldList(ing)) continue;
+        const id = (refPath(ing) || ingName(ing)).toLowerCase();
+        if (!rows.has(id)) rows.set(id, { ing, key: String(it.index), amounts: new Map(), other: [] });
+        const row = rows.get(id);
+        const a = plainAmount(mention.quantity);
+        if (a) row.amounts.set(a.unit, (row.amounts.get(a.unit) || 0) + a.n);
+        else if (mention.quantity) row.other.push(mention.quantity);
+      }
+    }
+    if (!rows.size) return;
+    chapters.push({
+      name: sec.name || (i === 0 ? 'Main recipe' : `Part ${i + 1}`),
+      items: [...rows.values()].map(({ ing, key, amounts, other }) => {
+        const target = refPath(ing);
+        return {
+          key, name: ingName(ing), ref: target, href: target && S.recipes.has(target) ? target : null,
+          note: ing.note || '', optional: /OPT/.test(ing.modifiers || ''),
+          qty: [...[...amounts].map(([u, n]) => fmtAmount(n, u)), ...other.map(fmtQuantity)].filter(Boolean).join(' + '),
+        };
+      }),
+    });
+  });
+  return chapters.length > 1 ? chapters : null;
+}
+
 // Ingredients as written or by aisle, one pick per device for the recipe
 // page and the mise en place. Without an aisle.conf there is no choice.
 const hasAisles = () => shopCtx().aisle.sections.length > 0;
@@ -84,14 +140,20 @@ export function sortToggle() {
   </div>`;
 }
 
-/** The ingredient list, flat or under aisle headings. `links` makes other recipes links. */
-export function ingLines(items, checked, { interactive = true, links = true } = {}) {
+/**
+ * The ingredient list: flat, under aisle headings, or as written under the
+ * recipe's chapters when `chapters` is given. `links` makes other recipes links.
+ */
+export function ingLines(items, checked, { interactive = true, links = true, chapters = null } = {}) {
   const row = (x) => `<li class="ing-row${checked.has(x.key) ? ' is-checked' : ''}" data-key="${esc(x.key)}">
       ${interactive ? `<input type="checkbox" class="tick" aria-label="Got ${esc(x.name)}" ${checked.has(x.key) ? 'checked' : ''}>` : ''}
       <span class="ing-qty">${esc(x.qty)}</span>
       <span class="ing-name">${links && x.href ? `<a href="#/r/${encPath(x.href)}">${esc(x.name)}</a>` : esc(x.name)}${x.note ? ` <span class="ing-note">${esc(x.note)}</span>` : ''}${x.optional ? ' <span class="ing-note">optional</span>' : ''}</span>
     </li>`;
-  if (!interactive || !byAisle()) return `<ul class="ing-list">${items.map(row).join('')}</ul>`;
+  const groups = (list) => list.map((g) => `
+    <h3 class="ing-sec ing-chap">${esc(g.name)}</h3>
+    <ul class="ing-list">${g.items.map(row).join('')}</ul>`).join('');
+  if (!interactive || !byAisle()) return chapters ? groups(chapters) : `<ul class="ing-list">${items.map(row).join('')}</ul>`;
   return shop.aisleGroups(items, shopCtx().aisle).map((g) => `
     <h3 class="ing-sec">${esc(cap(g.name))}</h3>
     <ul class="ing-list">${g.items.map(row).join('')}</ul>`).join('');
@@ -114,6 +176,7 @@ export function recipeBody(parsed, { interactive = true, path = '' } = {}) {
   if (!recipe) return '<p class="muted">This recipe could not be read.</p>';
   const checked = S.checked.get(path) || new Set();
   const items = ingItems(parsed);
+  const chapters = ingChapters(parsed);
 
   const seenTools = new Set();
   const tools = [];
@@ -146,7 +209,7 @@ export function recipeBody(parsed, { interactive = true, path = '' } = {}) {
   return `
     <aside class="ingredients">
       <div class="ing-head"><h2>Ingredients</h2>${interactive && items.length ? sortToggle() : ''}</div>
-      ${items.length ? `<div class="ing-lines">${ingLines(items, checked, { interactive })}</div>` : '<p class="muted">No ingredients listed.</p>'}
+      ${items.length ? `<div class="ing-lines">${ingLines(items, checked, { interactive, chapters })}</div>` : '<p class="muted">No ingredients listed.</p>'}
       ${tools.length ? `<h2 class="tools-h">Equipment</h2><ul class="tool-list">${tools.join('')}</ul>` : ''}
     </aside>
     <section class="method">
@@ -344,7 +407,7 @@ export async function showRecipe(rawPath, params) {
       };
     });
     wireTicks();
-    wireSort($('#body'), () => { $('#body .ing-lines').innerHTML = ingLines(ingItems(parsed), set); wireTicks(); });
+    wireSort($('#body'), () => { $('#body .ing-lines').innerHTML = ingLines(ingItems(parsed), set, { chapters: ingChapters(parsed) }); wireTicks(); });
     $$('#body .step').forEach((li) => {
       li.addEventListener('click', (ev) => {
         if (ev.target.closest('a,button')) return;

@@ -11,7 +11,7 @@ import { openChoose } from './choose.js';
 import { BULB_ICON, CARDS_ICON, CHECK_ICON, CLOSE_ICON, LEFT_ICON, LIST_ICON, RIGHT_ICON } from './icons.js';
 import { go, parseHash } from './app.js';
 import { markCooked } from './planner.js';
-import { baseServings, cookSteps, ingItems, ingLines, ingName, sortToggle, wireSort } from './recipe.js';
+import { baseServings, byAisle, cookSteps, ingChapters, ingItems, ingLines, ingName, sortToggle, wireSort } from './recipe.js';
 import { S } from './state.js';
 import { wireTimerChips } from './timers.js';
 import { $, $$, encPath, esc, lc, saved } from './util.js';
@@ -32,7 +32,7 @@ function cookList(parsed, steps) {
     seen.add(n);
     tools.push({ key: `tool:${n}`, name: c.alias || c.name, qty: c.quantity ? fmtQuantity(c.quantity) : '', steps: usedIn((s) => s.tools.some((x) => toolName(x) === n)) });
   }
-  return { ings, tools };
+  return { ings, tools, chapters: ingChapters(parsed) };
 }
 
 let wakeLock = null;
@@ -82,7 +82,7 @@ export async function showCook(rawPath, params) {
   const parse = () => {
     parsed = parseRecipe(e.src, base ? servings / base : mult);
     steps = parsed.recipe ? cookSteps(parsed.recipe) : [];
-    list = parsed.recipe ? cookList(parsed, steps) : { ings: [], tools: [] };
+    list = parsed.recipe ? cookList(parsed, steps) : { ings: [], tools: [], chapters: null };
     at = Math.min(at, steps.length);
   };
   const query = (withStep) => {
@@ -125,7 +125,9 @@ export async function showCook(rawPath, params) {
     </ul>` : ''}`;
 
   const readyText = () => {
-    const all = [...list.ings, ...list.tools];
+    // The rows on screen: as written, an ingredient can be in two chapters.
+    const ings = list.chapters && !byAisle() ? list.chapters.flatMap((c) => c.items) : list.ings;
+    const all = [...ings, ...list.tools];
     return `${all.filter((x) => checked.has(x.key)).length} of ${all.length} ready`;
   };
   const tickRow = (x, tool) => `<li class="ing-row${tool ? ' tool-row' : ''}${checked.has(x.key) ? ' is-checked' : ''}" data-key="${esc(x.key)}">
@@ -137,7 +139,7 @@ export async function showCook(rawPath, params) {
     <div class="cook-mise">
       <h1>Mise en place</h1>
       <div class="mise-meta"><div class="scaler" id="cook-scaler"></div><span id="mise-count">${readyText()}</span></div>
-      ${list.ings.length ? `<div class="ing-head"><h2>Ingredients</h2>${sortToggle()}</div><div class="ing-lines">${ingLines(list.ings, checked, { links: false })}</div>` : ''}
+      ${list.ings.length ? `<div class="ing-head"><h2>Ingredients</h2>${sortToggle()}</div><div class="ing-lines">${ingLines(list.ings, checked, { links: false, chapters: list.chapters })}</div>` : ''}
       ${list.tools.length ? `<h2>Tools</h2><ul class="ing-list tool-list">${list.tools.map((x) => tickRow(x, true)).join('')}</ul>` : ''}
     </div>`;
 
@@ -339,7 +341,7 @@ export async function showCook(rawPath, params) {
 
   const wire = () => {
     wireTicks();
-    wireSort(stage, () => { $('.ing-lines', stage).innerHTML = ingLines(list.ings, checked, { links: false }); wireTicks(); });
+    wireSort(stage, () => { $('.ing-lines', stage).innerHTML = ingLines(list.ings, checked, { links: false, chapters: list.chapters }); wireTicks(); });
     if (mode === 'steps') wireTimerChips(stage, e.path, `${e.title}, step ${at}`);
     else $$('.cf-step', stage).forEach((li) => wireTimerChips(li, e.path, `${e.title}, step ${li.dataset.at}`));
     wireFoot();

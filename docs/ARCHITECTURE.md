@@ -103,6 +103,12 @@ spinner on the page while it saves. The recipe's buttons stay on one row
 which only shows then. The editor keeps unsaved work as a draft on the
 device.
 
+Ingredients "As written" on a recipe with two or more `== Section ==`
+chapters that use ingredients are listed per chapter under its name
+(`ingChapters` in `recipe.js`), on the recipe page and in the mise en place.
+An ingredient used twice in one chapter is added up there; one used in two
+chapters shows in both. "By aisle" stays one merged list.
+
 ### Cook mode (`cook.js`)
 
 The recipe page's chef hat button opens it. Step 0 is the mise en place
