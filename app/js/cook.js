@@ -141,8 +141,8 @@ export async function showCook(rawPath, params) {
       ${list.tools.length ? `<h2>Tools</h2><ul class="ing-list tool-list">${list.tools.map((x) => tickRow(x, true)).join('')}</ul>` : ''}
     </div>`;
 
-  // Every step in full, like the wheel of an alarm clock: the one in the
-  // middle of the screen is the current one and the page snaps to it.
+  // Every step in full in one column: the one at the top of the screen is the
+  // current one and the page snaps to it, with the next one below.
   const flowHTML = () => {
     const out = [`<li class="cf-step cf-mise" data-at="0">${miseHTML()}</li>`];
     let chapter = '';
@@ -217,26 +217,42 @@ export async function showCook(rawPath, params) {
     $('#cook-close').href = backHash();
   };
 
-  // Scroll mode: put a step in the middle (a tall one with its top in view);
-  // the scroll itself makes it the current step.
+  // Scroll mode: put a step at the top, just under the top bar; the scroll
+  // itself makes it the current step. Snapping is off during the glide, as
+  // some browsers (Safari) otherwise stop it or pull it back to where it was.
   const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let glide = null;
+  const land = () => {
+    if (!glide) return;
+    clearTimeout(glide.timer);
+    removeEventListener('scrollend', glide.end);
+    glide = null;
+    root.classList.remove('is-gliding');
+  };
   const scrollToStep = (n, smooth = true) => {
     const li = $(`.cf-step[data-at="${n}"]`, stage);
     if (!li) return;
-    const room = innerHeight - $('.cook-top', root).offsetHeight - foot.offsetHeight;
-    li.scrollIntoView({ block: li.offsetHeight > room ? 'start' : 'center', behavior: smooth && !calm() ? 'smooth' : 'auto' });
+    const top = Math.max(0, Math.round(scrollY + li.getBoundingClientRect().top - $('.cook-top', root).offsetHeight));
+    land();
+    if (!smooth || calm()) { window.scrollTo({ top }); return; }
+    root.classList.add('is-gliding');
+    // Done when the page stops at the step (or can go no further), or after
+    // a while for browsers without scrollend.
+    const end = () => { if (Math.abs(scrollY - top) < 2 || scrollY + innerHeight >= document.documentElement.scrollHeight - 1) land(); };
+    glide = { end, timer: setTimeout(land, 1500) };
+    addEventListener('scrollend', end);
+    window.scrollTo({ top, behavior: 'smooth' });
   };
 
-  // The step under the middle of the space between the top bar and the foot,
-  // or the nearest one when the middle falls between two.
-  const centreStep = () => {
-    const top = $('.cook-top', root).offsetHeight;
-    const mid = top + (innerHeight - top - foot.offsetHeight) / 2;
-    let best = at, dist = Infinity;
+  // The last step whose top has come up to the top bar (give or take a
+  // little), so a short step at the top is never passed over for the one
+  // below it. A tall step stays current while you read down it.
+  const topStep = () => {
+    const line = $('.cook-top', root).offsetHeight + 48;
+    let best = 0;
     for (const li of $$('.cf-step', stage)) {
-      const r = li.getBoundingClientRect();
-      const d = r.top <= mid && r.bottom >= mid ? 0 : Math.min(Math.abs(r.top - mid), Math.abs(r.bottom - mid));
-      if (d < dist) { dist = d; best = Number(li.dataset.at); }
+      if (li.getBoundingClientRect().top > line) break;
+      best = Number(li.dataset.at);
     }
     return best;
   };
@@ -247,6 +263,7 @@ export async function showCook(rawPath, params) {
       const n = Number(li.dataset.at);
       li.classList.toggle('is-now', n === at);
       li.classList.toggle('is-done', n < at);
+      li.classList.toggle('is-next', n === at + 1);
     });
     side.innerHTML = sideHTML();
     foot.innerHTML = footHTML();
@@ -328,7 +345,7 @@ export async function showCook(rawPath, params) {
     wireFoot();
   };
 
-  // Scroll mode: a tap on a faded step brings it to the middle instead of
+  // Scroll mode: a tap on a faded step brings it to the top instead of
   // ticking or starting what is in it.
   stage.addEventListener('click', (ev) => {
     const li = mode === 'scroll' && ev.target.closest('.cf-step');
@@ -338,7 +355,7 @@ export async function showCook(rawPath, params) {
     scrollToStep(Number(li.dataset.at));
   }, true);
 
-  // Scroll mode: whichever step passes the middle becomes the current one.
+  // Scroll mode: whichever step comes up to the top becomes the current one.
   if (cookScroll) removeEventListener('scroll', cookScroll);
   let frame = 0;
   cookScroll = () => {
@@ -346,7 +363,7 @@ export async function showCook(rawPath, params) {
     if (mode !== 'scroll' || frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      const n = centreStep();
+      const n = topStep();
       if (n !== at) { at = n; mark(); }
     });
   };

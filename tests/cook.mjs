@@ -53,23 +53,37 @@ export default async function () {
     await page.waitForSelector('.cook-flow');
     const nowStep = () => page.$eval('.cf-step.is-now', (el) => el.dataset.at);
     ok((await nowStep()) === '2' && (await page.$$('.cf-step.is-done')).length === 2, 'scroll mode opens on the current step, the ones before are done');
-    const centred = () => page.$eval('.cf-step.is-now', (el) => {
-      const top = document.querySelector('.cook-top').offsetHeight, foot = document.querySelector('#cook-foot').offsetHeight;
-      const r = el.getBoundingClientRect();
-      return Math.abs((r.top + r.bottom) / 2 - (top + (innerHeight - top - foot) / 2));
-    });
-    ok((await centred()) < 4, `the current step sits in the middle (${Math.round(await centred())}px off)`);
+    const atTop = () => page.$eval('.cf-step.is-now', (el) => Math.abs(el.getBoundingClientRect().top - document.querySelector('.cook-top').offsetHeight));
+    ok((await atTop()) < 4, `the current step sits at the top (${Math.round(await atTop())}px off)`);
+    ok((await page.$eval('.cf-step.is-next', (el) => el.dataset.at)) === '3', 'the next step is marked below it');
     await page.mouse.wheel(0, 300);
     await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '3', null, { timeout: 3000 }).catch(() => {});
     await page.waitForTimeout(800); // let the snap settle
     ok((await nowStep()) === '3' && page.url().includes('step=3'), 'scrolling down makes the next step the current one');
-    ok((await centred()) < 4, `and it snaps to the middle (${Math.round(await centred())}px off)`);
+    ok((await atTop()) < 4, `and it snaps to the top (${Math.round(await atTop())}px off)`);
     await page.click('.cf-step[data-at="1"] .cook-text');
     await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '1', null, { timeout: 3000 }).catch(() => {});
-    ok((await nowStep()) === '1', 'tapping a faded step brings it to the middle');
+    ok((await nowStep()) === '1', 'tapping a faded step brings it to the top');
+    await page.waitForTimeout(800); // let the glide land
+    await page.click('.cf-step.is-next .cook-text');
+    await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '2' && !document.querySelector('.cook.is-gliding'), null, { timeout: 3000 }).catch(() => {});
+    ok((await nowStep()) === '2' && (await atTop()) < 4, `tapping the next step scrolls it to the top (now ${await nowStep()}, ${Math.round(await atTop())}px off)`);
+    await page.click('.cf-step[data-at="1"] .cook-text');
+    await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '1', null, { timeout: 3000 }).catch(() => {});
     await page.click('#cook-next');
     await page.waitForFunction(() => document.querySelector('.cf-step.is-now')?.dataset.at === '2', null, { timeout: 3000 }).catch(() => {});
     ok((await nowStep()) === '2' && (await page.textContent('.cook-where')).startsWith('2 of '), 'Next scrolls to the next step');
+    const skipped = await page.evaluate(async () => {
+      const bar = document.querySelector('.cook-top').offsetHeight, wrong = [];
+      for (const li of document.querySelectorAll('.cf-step')) {
+        window.scrollTo(0, scrollY + li.getBoundingClientRect().top - bar);
+        await new Promise((r) => setTimeout(r, 150));
+        const now = document.querySelector('.cf-step.is-now')?.dataset.at;
+        if (now !== li.dataset.at) wrong.push(`${li.dataset.at} showed ${now}`);
+      }
+      return wrong;
+    });
+    ok(!skipped.length, `the step at the top is always the current one${skipped.length ? ` (${skipped.join(', ')})` : ''}`);
     const last = await page.$$eval('.cf-step', (els) => els.length - 1);
     await page.click(`.cb-pill[data-at="${last}"]`);
     await page.waitForFunction((n) => document.querySelector('.cf-step.is-now')?.dataset.at === String(n), last, { timeout: 3000 }).catch(() => {});

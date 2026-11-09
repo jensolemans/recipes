@@ -68,18 +68,19 @@ body[data-view="cook"] .timers { bottom: calc(var(--cook-foot, 120px) + 8px); }
 .cook-arrow.is-primary { background: var(--strong); color: var(--on-strong); border-color: var(--strong); }
 .cook-arrow span { display: none; }
 
-/* scroll mode: a wheel of steps that snaps the one in the middle into place.
-   Steps taller than the screen scroll freely until their edge. Only opacity
-   and scale change, so no step changes height while you scroll. */
-html:has(.cook[data-mode="scroll"]) {
-  scroll-snap-type: y mandatory;
-  scroll-padding: var(--cook-top, 60px) 0 var(--cook-foot, 80px);
-}
-.cook-flow { list-style: none; padding: 30dvh 0 50dvh; }
+/* scroll mode: a column of steps that snaps the current one to the top, with
+   the next one below it. Steps taller than the screen scroll freely until
+   their edge. Only opacity and scale change, so no step changes height while
+   you scroll. Each step stops a flick, so none is skipped. The space under
+   the last step lets it reach the top too. */
+html:has(.cook[data-mode="scroll"]) { scroll-padding: var(--cook-top, 60px) 0 var(--cook-foot, 80px); }
+html:has(.cook[data-mode="scroll"]:not(.is-gliding)) { scroll-snap-type: y mandatory; }
+.cook-flow { list-style: none; padding: 0 0 calc(100dvh - var(--cook-top, 60px) - var(--cook-foot, 120px)); }
 .cf-step {
-  scroll-snap-align: center; padding: 18px 0; cursor: pointer;
+  scroll-snap-align: start; scroll-snap-stop: always; padding: 18px 0; cursor: pointer;
   opacity: .32; transform: scale(.94); transform-origin: left center; transition: opacity .25s, transform .25s;
 }
+.cf-step.is-next { opacity: .6; }
 .cf-step.is-now { opacity: 1; transform: none; cursor: auto; }
 .cf-step .cook-text { font-size: 24px; margin-bottom: 16px; }
 .cf-chapter { font-size: 13px; font-weight: 600; color: var(--muted); padding: 22px 0 0; }

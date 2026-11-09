@@ -107,7 +107,9 @@ device.
 
 The recipe page's chef hat button opens it. Step 0 is the mise en place
 (servings, ingredients and tools as ticks, shared with the recipe page), then
-one step at a time (swipe or buttons, arrow keys) or all steps in one column;
+one step at a time (swipe or buttons, arrow keys) or all steps in one column,
+where the current step snaps to the top with the next one half faded below
+(tap any step to glide to it; snapping is off during the glide for Safari);
 the pick and "keep the screen on" (Wake Lock) are saved per device. The bar
 at the bottom has a pill per step, grouped and labelled by `== Section ==`
 chapters. From 900 px a list beside the step ticks off what is behind you.
