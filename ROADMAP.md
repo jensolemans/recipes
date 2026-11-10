@@ -7,6 +7,15 @@ Tick an item off in the same commit that ships it. Items are in the order to
 build them. Anything that needs a server must be free to run and easy to
 maintain (a Cloudflare Worker is the default choice).
 
+Today the site is for Jens, with his girlfriend, family and friends cooking
+from his recipes. Later it may become an open source product that anyone can
+run with their own recipes and their own Claude, never sold or run for
+profit. Keep that option open: Drive is the most convenient place for the
+recipes now, but new features should not depend on Drive's API more than
+they need to (keep Drive calls in `drive.js` and the connector, and the data
+in plain files like `.cook` and `config/*.json`), so another place to store
+recipes can be added later. See "Someday".
+
 ## Now: recipes with Claude
 
 Every recipe goes through Claude with Jens's `cooklang-recipe` skill, which
@@ -104,6 +113,33 @@ Mostly front end, quick wins, used every week.
   any phone. Links and text keep the current scale. Plus a print layout:
   one page, no top bar or side panel, ingredients beside the method, at the
   current scale. *Paprika, Mela, Mealie, NYT Cooking.*
+- [ ] **Link previews.** When Jens sends a recipe link in a chat ("how do
+  you make the pancakes?"), the chat shows the recipe's photo, title and
+  time instead of a bare address. Needs a small page per recipe from
+  build.py with the preview tags, which opens the recipe in the app, since
+  `#/r/...` never reaches the server. Links from Share use these pages.
+- [ ] **One-time swaps.** When adding a recipe to the shopping list or the
+  plan, leave out or replace an ingredient or a whole component (a
+  `== Section ==` chapter): the mash replaced by frozen fries, the crust by
+  a bought one, chicken stock by vegetable stock. A component can be
+  replaced by another recipe from the collection or a plain item. The swap
+  only holds for that list or plan entry; the recipe itself never changes.
+  The shopping list, the plan card and cook mode follow it (skipped steps
+  left out, the replacing recipe's steps added). On phones it sits in the
+  Add to list sheet, where shopping is decided. Chapters in recipes should
+  be components that can be made separately (see `ISSUES.md`), which the
+  cooklang-recipe skill takes care of.
+- [ ] **Plans through Claude.** Connector tools to read and change the plan
+  (`read_plan`, `plan_recipe`, `move_meal`), so a saved import can go
+  straight into Saved and "plan me five dinners from my collection,
+  nothing over 45 minutes on weekdays" works from any chat.
+- [ ] **Cooking log.** After cooking (the finish flow in cook mode, or Done
+  on the plan), a quick rating and an optional note: what went well, what to
+  change. The recipe page shows how often and when it was last cooked, the
+  rating and the notes. A note can go straight to Claude as an edit ("I made
+  the dal, too salty, do the tempering first"), and Claude can read the log
+  through the connector. Stored in Drive as `config/log.json`, synced like
+  the plan; only Jens sees it. Feeds "What to cook tonight".
 
 ## Then
 
@@ -137,12 +173,6 @@ The planning features, built the same way as the shopping list.
   - **States.** Saved, planned, on the list, bought, cooked.
   - **Storage.** `config/plan.json` in Drive with the shopping list's
     offline queue. Moved recipes are followed, deleted ones say so.
-- [ ] **Plans through Claude.** Connector tools to read and change the plan
-  (`read_plan`, `plan_recipe`, `move_meal`), so a saved import can go
-  straight into Saved and "plan me five dinners from my collection,
-  nothing over 45 minutes on weekdays" works from any chat.
-- [ ] **Cooked history.** The recipe page shows when it was last cooked and
-  how often, from the plan's Cooked meals and the finish flow in cook mode.
 - [ ] **Cook several recipes at once.** For a meal prep session or a dinner
   with sides: pick planned recipes and cook mode merges them into one run,
   ordered so long steps (oven, simmering, resting) start first and short ones
@@ -165,8 +195,8 @@ The planning features, built the same way as the shopping list.
   weighted, with a line on why it was picked and "Another one", Cook and
   Save. It weighs up the season (season tags, else in-season produce and
   how it is cooked: stews in winter, salads in summer), favourites not cooked
-  in a while and nothing cooked in the last week or two (from Cooked
-  history), what is in Saved, and the day (quick on weeknights, a bigger
+  in a while and nothing cooked in the last week or two (from the Cooking
+  log, with its ratings), what is in Saved, and the day (quick on weeknights, a bigger
   project at the weekend). Within the current filters, else mains.
   *Paprika, Mela, Samsung Food.*
 
@@ -198,11 +228,9 @@ Useful, but lower priority.
   *Mealie, Paprika.*
 - [ ] **Easier sharing with friends.** Send a recipe so it lands well on the
   other side: the `.cook` file with its photo (two files through the share
-  sheet on phones, a zip on bigger screens) for friends who use Cooklang,
-  and link previews that show the recipe's photo and title in chats (needs
-  a small page per recipe from build.py, since `#/r/...` never reaches the
-  server). Needs more groundwork first: how a friend gets the files into
-  their own app.
+  sheet on phones, a zip on bigger screens) for friends who use Cooklang
+  (link previews moved up to "Next"). Needs more groundwork first: how a
+  friend gets the files into their own app.
 - [ ] **Friends' favourites and notes.** Friends keep their own favourites in
   their browser, without editing rights. *NYT Cooking, Samsung Food.*
 - [ ] **"I made this" notes from friends.** Comments on recipes, which needs a
@@ -214,7 +242,11 @@ Useful, but lower priority.
 
 ## Someday: apps friends can set up themselves
 
-Not planned yet. Jens's own setup (this site on GitHub Pages and the
+Not planned yet, but the goal is an open source product, free to use and
+never sold (see the top of this file). Claude and the cooklang-recipe skill
+stay at the heart of it: every recipe goes through the skill, so a
+collection stays clean and consistent, and each person brings their own
+Claude. Jens's own setup (this site on GitHub Pages and the
 Cloudflare connector) stays as it is. If the project should ever be
 shareable, so friends run their own copy with their own recipes and their
 own Claude, this is the plan. It came out of comparing a forked setup, a
